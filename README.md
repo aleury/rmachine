@@ -7,6 +7,7 @@ A simple 32-bit RISC CPU.
 The 32-bit version of the R-machine has the following 16 32-bit registers:
 
 | ID | Name | Purpose |
+| --- | ---- | -------|
 | 0000 | x0 | Hardwired to zero |
 | 0001 - 1101 | a0 - a12 | General purpose registers |
 | 1110 | ra | Return address |
@@ -17,6 +18,7 @@ The 32-bit version of the R-machine has the following 16 32-bit registers:
 Each instruction is 32-bits in length and is encoded as follows:
 
 | 31 - 17 | 16 - 13 | 12 - 9 | 8 - 5 | 4 - 0 |
+| ------- | ------- | ------ | ----- | ----- |
 | imm | rs2 | rs1 | rd | opcode |
 
 - The opcode field is 5-bits in length and specifies the operation to be performed.
@@ -26,6 +28,7 @@ Each instruction is 32-bits in length and is encoded as follows:
 ## Instruction Set
 
 | Opcode | Mnemonic | Description |
+| ------ | -------- | ----------- |
 | 00000 | - | Invalid instruction  |
 | 00001 | LI | Load Immediate; rd = imm |
 | 00010 | ADD | Add; rd = rs1 + rs2 + imm |
