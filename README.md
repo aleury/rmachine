@@ -1,3 +1,7 @@
+[![CI](https://github.com/aleury/rmachine/actions/workflows/ci.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/ci.yaml)
+[![Nightly](https://github.com/aleury/rmachine/actions/workflows/nightly.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/nightly.yaml)
+[![Security audit](https://github.com/aleury/rmachine/actions/workflows/audit.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/audit.yaml)
+
 # R-Machine
 
 A simple 32-bit RISC CPU.
