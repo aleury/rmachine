@@ -1,4 +1,4 @@
-#![allow(unused, clippy::cast_lossless)]
+#![allow(unused, clippy::cast_lossless, clippy::cast_possible_truncation)]
 use std::{collections::HashMap, num::TryFromIntError};
 
 #[derive(Debug, PartialEq)]
@@ -29,7 +29,6 @@ impl Machine {
     }
 
     fn load_program(&mut self, program: &[Word]) {
-        #[allow(clippy::cast_possible_truncation)]
         for (address, &word) in program.iter().enumerate() {
             self.mem.insert(address as u32, word);
         }
