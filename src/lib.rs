@@ -35,22 +35,23 @@ impl Machine {
     }
 
     fn run(&mut self) -> Result<()> {
-        let word = *self.mem.get(&self.pc).unwrap_or(&Word::default());
-        let instruction = Instruction::try_from(word)?;
-        self.pc += 1;
+        loop {
+            let word = *self.mem.get(&self.pc).unwrap_or(&Word::default());
+            let instruction = Instruction::try_from(word)?;
+            self.pc += 1;
 
-        match instruction.opcode {
-            Opcode::LoadImmediate => {
-                self.regs.insert(instruction.rd, instruction.imm as u32);
-            }
-            Opcode::Add => {
-                let rs1 = *self.regs.get(&instruction.rs1).unwrap_or(&Word::default());
-                let rs2 = *self.regs.get(&instruction.rs2).unwrap_or(&Word::default());
-                let imm = instruction.imm as Word;
-                self.regs.insert(instruction.rd, rs1 + rs2 + imm);
+            match instruction.opcode {
+                Opcode::LoadImmediate => {
+                    self.regs.insert(instruction.rd, instruction.imm as u32);
+                }
+                Opcode::Add => {
+                    let rs1 = *self.regs.get(&instruction.rs1).unwrap_or(&Word::default());
+                    let rs2 = *self.regs.get(&instruction.rs2).unwrap_or(&Word::default());
+                    let imm = instruction.imm as Word;
+                    self.regs.insert(instruction.rd, rs1 + rs2 + imm);
+                }
             }
         }
-
         Ok(())
     }
 }
@@ -329,5 +330,19 @@ mod tests {
 
         assert_eq!(machine.pc, 1);
         assert_some_eq!(machine.regs.get(&RegisterID::A0), &6);
+    }
+
+    #[test]
+    fn run_executes_multiple_add_instructions() {
+        let mut machine = Machine::new();
+        machine.load_program(&[
+            0b0000_0000_0000_0010_0000_0010_0010_0010,
+            0b0000_0000_0000_0010_0000_0010_0010_0010,
+            0b0000_0000_0000_0010_0000_0010_0010_0010,
+        ]);
+        machine.run();
+
+        assert_eq!(machine.pc, 3);
+        assert_some_eq!(machine.regs.get(&RegisterID::A0), &3);
     }
 }
