@@ -1,5 +1,4 @@
 #![allow(unused, clippy::cast_lossless)]
-
 use std::{collections::HashMap, num::TryFromIntError};
 
 #[derive(Debug, PartialEq)]
