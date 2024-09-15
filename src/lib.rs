@@ -17,7 +17,7 @@ type Result<T> = std::result::Result<T, Error>;
 struct Machine {
     pc: Word,
     sp: Word,
-    a: [Word; 16],
+    a: [Word; 13],
     ra: Word,
     x0: Word,
 }
@@ -130,7 +130,7 @@ mod tests {
         let want = Machine {
             sp: 0u32,
             pc: 0u32,
-            a: [0u32; 16],
+            a: [0u32; 13],
             ra: 0u32,
             x0: 0u32,
         };
