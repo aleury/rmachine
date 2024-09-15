@@ -1,30 +1,59 @@
-#![allow(unused)]
+#![allow(unused, clippy::cast_lossless)]
 
-use std::num::TryFromIntError;
-
-type Word = u32;
+use std::{collections::HashMap, num::TryFromIntError};
 
 #[derive(Debug, PartialEq)]
 enum Error {
-    Opcode(u32),
-    Register(u32),
+    OpcodeUnknown(u32),
+    RegisterUnknown(u32),
     ImmediateValue(TryFromIntError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Default, PartialEq)]
+type Word = u32;
+
+type Memory = HashMap<Word, Word>;
+
+type Registers = HashMap<RegisterID, Word>;
+
+#[derive(Debug, Default, Eq, PartialEq)]
 struct Machine {
     pc: Word,
-    sp: Word,
-    a: [Word; 13],
-    ra: Word,
-    x0: Word,
+    mem: Memory,
+    regs: Registers,
 }
 
 impl Machine {
     fn new() -> Self {
         Self::default()
+    }
+
+    fn load_program(&mut self, program: &[Word]) {
+        #[allow(clippy::cast_possible_truncation)]
+        for (address, &word) in program.iter().enumerate() {
+            self.mem.insert(address as u32, word);
+        }
+    }
+
+    fn run(&mut self) -> Result<()> {
+        let word = *self.mem.get(&self.pc).unwrap_or(&Word::default());
+        let instruction = Instruction::try_from(word)?;
+        self.pc += 1;
+
+        match instruction.opcode {
+            Opcode::LoadImmediate => {
+                self.regs.insert(instruction.rd, instruction.imm as u32);
+            }
+            Opcode::Add => {
+                let rs1 = *self.regs.get(&instruction.rs1).unwrap_or(&Word::default());
+                let rs2 = *self.regs.get(&instruction.rs2).unwrap_or(&Word::default());
+                let imm = instruction.imm as Word;
+                self.regs.insert(instruction.rd, rs1 + rs2 + imm);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -41,12 +70,12 @@ impl TryFrom<Word> for Opcode {
         match word {
             0b00001 => Ok(Opcode::LoadImmediate),
             0b00010 => Ok(Opcode::Add),
-            _ => Err(Error::Opcode(word)),
+            _ => Err(Error::OpcodeUnknown(word)),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
 enum RegisterID {
     X0,
     A0,
@@ -87,7 +116,7 @@ impl TryFrom<Word> for RegisterID {
             0b1101 => Ok(RegisterID::A12),
             0b1110 => Ok(RegisterID::RA),
             0b1111 => Ok(RegisterID::SP),
-            _ => Err(Error::Register(word)),
+            _ => Err(Error::RegisterUnknown(word)),
         }
     }
 }
@@ -123,16 +152,14 @@ impl TryFrom<Word> for Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claims::{assert_err_eq, assert_ok_eq};
+    use claims::{assert_err_eq, assert_ok_eq, assert_some_eq};
 
     #[test]
     fn new_returns_initialized_machine() {
         let want = Machine {
-            sp: 0u32,
             pc: 0u32,
-            a: [0u32; 13],
-            ra: 0u32,
-            x0: 0u32,
+            mem: Memory::default(),
+            regs: Registers::default(),
         };
         let got = Machine::new();
         assert_eq!(want, got);
@@ -140,7 +167,7 @@ mod tests {
 
     #[test]
     fn parsing_an_invalid_opcode_returns_an_error() {
-        assert_err_eq!(Opcode::try_from(0), Error::Opcode(0));
+        assert_err_eq!(Opcode::try_from(0), Error::OpcodeUnknown(0));
     }
 
     #[test]
@@ -166,7 +193,10 @@ mod tests {
 
     #[test]
     fn parsing_an_invalid_register_returns_an_error() {
-        assert_err_eq!(RegisterID::try_from(0b10000), Error::Register(0b10000));
+        assert_err_eq!(
+            RegisterID::try_from(0b10000),
+            Error::RegisterUnknown(0b10000)
+        );
     }
 
     #[test]
@@ -277,5 +307,29 @@ mod tests {
         for case in cases {
             assert_ok_eq!(Instruction::try_from(case.word), case.want);
         }
+    }
+
+    #[test]
+    fn run_executes_a_load_immediate_instruction() {
+        let mut machine = Machine::new();
+        machine.load_program(&[0b0000_0000_0000_0100_0000_0000_0010_0001]);
+
+        machine.run();
+
+        assert_eq!(machine.pc, 1);
+        assert_some_eq!(machine.regs.get(&RegisterID::A0), &2);
+    }
+
+    #[test]
+    fn run_executes_an_add_instruction() {
+        let mut machine = Machine::new();
+        machine.regs.insert(RegisterID::A1, 2);
+        machine.regs.insert(RegisterID::A2, 3);
+        machine.load_program(&[0b0000_0000_0000_0010_0110_0100_0010_0010]);
+
+        machine.run();
+
+        assert_eq!(machine.pc, 1);
+        assert_some_eq!(machine.regs.get(&RegisterID::A0), &6);
     }
 }
