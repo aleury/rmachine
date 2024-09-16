@@ -61,7 +61,9 @@ impl Machine {
 
     fn run(&mut self) -> Result<()> {
         loop {
-            let word = *self.mem.get(&self.pc).unwrap_or(&Word::default());
+            let Some(&word) = self.mem.get(&self.pc) else {
+                break;
+            };
             let instruction = Instruction::try_from(word)?;
             self.pc += 1;
 
@@ -355,7 +357,7 @@ mod tests {
         let mut machine = Machine::new();
         machine.load_program(&[0b0000_0000_0000_0100_0000_0000_0010_0001]);
 
-        assert_err!(machine.run());
+        assert_ok!(machine.run());
 
         let want = Machine {
             pc: 1,
@@ -372,7 +374,7 @@ mod tests {
         machine.regs.set(RegisterID::A2, 3);
         machine.load_program(&[0b0000_0000_0000_0010_0110_0100_0010_0010]);
 
-        assert_err!(machine.run());
+        assert_ok!(machine.run());
 
         let want = Machine {
             pc: 1,
