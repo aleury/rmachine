@@ -33,6 +33,14 @@ impl Registers {
     }
 }
 
+impl<const N: usize> From<[(RegisterID, Word); N]> for Registers {
+    fn from(values: [(RegisterID, Word); N]) -> Self {
+        Self {
+            inner: HashMap::from(values),
+        }
+    }
+}
+
 #[derive(Debug, Default, Eq, PartialEq)]
 struct Machine {
     pc: Word,
@@ -67,6 +75,7 @@ impl Machine {
                     let imm = instruction.imm as Word;
                     self.regs.set(instruction.rd, rs1 + rs2 + imm);
                 }
+                Opcode::EBreak => break,
             }
         }
         Ok(())
@@ -77,6 +86,7 @@ impl Machine {
 enum Opcode {
     LoadImmediate,
     Add,
+    EBreak,
 }
 
 impl TryFrom<Word> for Opcode {
@@ -86,6 +96,7 @@ impl TryFrom<Word> for Opcode {
         match word {
             0b00001 => Ok(Opcode::LoadImmediate),
             0b00010 => Ok(Opcode::Add),
+            0b11000 => Ok(Opcode::EBreak),
             _ => Err(Error::OpcodeUnknown(word)),
         }
     }
@@ -168,7 +179,7 @@ impl TryFrom<Word> for Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claims::{assert_err_eq, assert_ok_eq, assert_some_eq};
+    use claims::{assert_err, assert_err_eq, assert_ok, assert_ok_eq, assert_some_eq};
 
     #[test]
     fn new_returns_initialized_machine() {
@@ -200,6 +211,10 @@ mod tests {
             TestCase {
                 word: 0b00010,
                 want: Opcode::Add,
+            },
+            TestCase {
+                word: 0b11000,
+                want: Opcode::EBreak,
             },
         ];
         for case in cases {
@@ -319,6 +334,16 @@ mod tests {
                     imm: 0,
                 },
             },
+            TestCase {
+                word: 0b0000_0000_0000_0000_0000_0000_0001_1000,
+                want: Instruction {
+                    opcode: Opcode::EBreak,
+                    rd: RegisterID::X0,
+                    rs1: RegisterID::X0,
+                    rs2: RegisterID::X0,
+                    imm: 0,
+                },
+            },
         ];
         for case in cases {
             assert_ok_eq!(Instruction::try_from(case.word), case.want);
@@ -330,10 +355,14 @@ mod tests {
         let mut machine = Machine::new();
         machine.load_program(&[0b0000_0000_0000_0100_0000_0000_0010_0001]);
 
-        machine.run();
+        assert_err!(machine.run());
 
-        assert_eq!(machine.pc, 1);
-        assert_eq!(machine.regs.get(&RegisterID::A0), 2);
+        let want = Machine {
+            pc: 1,
+            regs: Registers::from([(RegisterID::A0, 2)]),
+            mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
+        };
+        assert_eq!(want, machine);
     }
 
     #[test]
@@ -343,10 +372,33 @@ mod tests {
         machine.regs.set(RegisterID::A2, 3);
         machine.load_program(&[0b0000_0000_0000_0010_0110_0100_0010_0010]);
 
-        machine.run();
+        assert_err!(machine.run());
 
-        assert_eq!(machine.pc, 1);
-        assert_eq!(machine.regs.get(&RegisterID::A0), 6);
+        let want = Machine {
+            pc: 1,
+            regs: Registers::from([
+                (RegisterID::A0, 6),
+                (RegisterID::A1, 2),
+                (RegisterID::A2, 3),
+            ]),
+            mem: HashMap::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
+        };
+        assert_eq!(want, machine);
+    }
+
+    #[test]
+    fn run_executes_an_ebreak_instruction() {
+        let mut machine = Machine::new();
+        machine.load_program(&[0b0000_0000_0000_0000_0000_0000_0001_1000]);
+
+        assert_ok!(machine.run());
+
+        let want = Machine {
+            pc: 1,
+            regs: Registers::default(),
+            mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
+        };
+        assert_eq!(want, machine);
     }
 
     #[test]
@@ -356,11 +408,21 @@ mod tests {
             0b0000_0000_0000_0010_0000_0010_0010_0010,
             0b0000_0000_0000_0010_0000_0010_0010_0010,
             0b0000_0000_0000_0010_0000_0010_0010_0010,
+            0b0000_0000_0000_0000_0000_0000_0001_1000,
         ]);
-        machine.run();
+        assert_ok!(machine.run());
 
-        assert_eq!(machine.pc, 3);
-        assert_eq!(machine.regs.get(&RegisterID::A0), 3);
+        let want = Machine {
+            pc: 4,
+            regs: Registers::from([(RegisterID::A0, 3)]),
+            mem: Memory::from([
+                (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
+                (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
+                (2, 0b0000_0000_0000_0010_0000_0010_0010_0010),
+                (3, 0b0000_0000_0000_0000_0000_0000_0001_1000),
+            ]),
+        };
+        assert_eq!(want, machine);
     }
 
     #[test]
