@@ -25,6 +25,10 @@ impl Registers {
     }
 
     fn set(&mut self, reg: RegisterID, value: Word) {
+        let value = match reg {
+            RegisterID::X0 => 0,
+            _ => value,
+        };
         self.inner.insert(reg, value);
     }
 }
@@ -357,5 +361,15 @@ mod tests {
 
         assert_eq!(machine.pc, 3);
         assert_eq!(machine.regs.get(&RegisterID::A0), 3);
+    }
+
+    #[test]
+    fn x0_register_is_always_zero() {
+        let mut registers = Registers::default();
+
+        assert_eq!(registers.get(&RegisterID::X0), 0);
+
+        registers.set(RegisterID::X0, 42);
+        assert_eq!(registers.get(&RegisterID::X0), 0);
     }
 }
