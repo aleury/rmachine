@@ -53,12 +53,6 @@ impl Machine {
         Self::default()
     }
 
-    fn load_program(&mut self, program: &[Word]) {
-        for (address, &word) in program.iter().enumerate() {
-            self.mem.insert(address as Word, word);
-        }
-    }
-
     fn run(&mut self) -> Result<()> {
         loop {
             let Some(&word) = self.mem.get(&self.pc) else {
@@ -354,8 +348,10 @@ mod tests {
 
     #[test]
     fn run_executes_a_load_immediate_instruction() {
-        let mut machine = Machine::new();
-        machine.load_program(&[0b0000_0000_0000_0100_0000_0000_0010_0001]);
+        let mut machine = Machine {
+            mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
+            ..Default::default()
+        };
 
         assert_ok!(machine.run());
 
@@ -369,10 +365,11 @@ mod tests {
 
     #[test]
     fn run_executes_an_add_instruction() {
-        let mut machine = Machine::new();
-        machine.regs.set(RegisterID::A1, 2);
-        machine.regs.set(RegisterID::A2, 3);
-        machine.load_program(&[0b0000_0000_0000_0010_0110_0100_0010_0010]);
+        let mut machine = Machine {
+            regs: Registers::from([(RegisterID::A1, 2), (RegisterID::A2, 3)]),
+            mem: Memory::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
+            ..Default::default()
+        };
 
         assert_ok!(machine.run());
 
@@ -390,8 +387,10 @@ mod tests {
 
     #[test]
     fn run_executes_an_ebreak_instruction() {
-        let mut machine = Machine::new();
-        machine.load_program(&[0b0000_0000_0000_0000_0000_0000_0001_1000]);
+        let mut machine = Machine {
+            mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
+            ..Default::default()
+        };
 
         assert_ok!(machine.run());
 
@@ -405,13 +404,15 @@ mod tests {
 
     #[test]
     fn run_executes_multiple_add_instructions() {
-        let mut machine = Machine::new();
-        machine.load_program(&[
-            0b0000_0000_0000_0010_0000_0010_0010_0010,
-            0b0000_0000_0000_0010_0000_0010_0010_0010,
-            0b0000_0000_0000_0010_0000_0010_0010_0010,
-            0b0000_0000_0000_0000_0000_0000_0001_1000,
-        ]);
+        let mut machine = Machine {
+            mem: Memory::from([
+                (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
+                (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
+                (2, 0b0000_0000_0000_0010_0000_0010_0010_0010),
+                (3, 0b0000_0000_0000_0000_0000_0000_0001_1000),
+            ]),
+            ..Default::default()
+        };
         assert_ok!(machine.run());
 
         let want = Machine {
