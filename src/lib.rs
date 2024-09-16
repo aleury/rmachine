@@ -14,7 +14,20 @@ type Word = u32;
 
 type Memory = HashMap<Word, Word>;
 
-type Registers = HashMap<RegisterID, Word>;
+#[derive(Debug, Default, Eq, PartialEq)]
+struct Registers {
+    inner: HashMap<RegisterID, Word>,
+}
+
+impl Registers {
+    fn get(&self, reg: &RegisterID) -> Word {
+        *self.inner.get(reg).unwrap_or(&Word::default())
+    }
+
+    fn set(&mut self, reg: RegisterID, value: Word) {
+        self.inner.insert(reg, value);
+    }
+}
 
 #[derive(Debug, Default, Eq, PartialEq)]
 struct Machine {
@@ -30,7 +43,7 @@ impl Machine {
 
     fn load_program(&mut self, program: &[Word]) {
         for (address, &word) in program.iter().enumerate() {
-            self.mem.insert(address as u32, word);
+            self.mem.insert(address as Word, word);
         }
     }
 
@@ -42,13 +55,13 @@ impl Machine {
 
             match instruction.opcode {
                 Opcode::LoadImmediate => {
-                    self.regs.insert(instruction.rd, instruction.imm as u32);
+                    self.regs.set(instruction.rd, instruction.imm as Word);
                 }
                 Opcode::Add => {
-                    let rs1 = *self.regs.get(&instruction.rs1).unwrap_or(&Word::default());
-                    let rs2 = *self.regs.get(&instruction.rs2).unwrap_or(&Word::default());
+                    let rs1 = self.regs.get(&instruction.rs1);
+                    let rs2 = self.regs.get(&instruction.rs2);
                     let imm = instruction.imm as Word;
-                    self.regs.insert(instruction.rd, rs1 + rs2 + imm);
+                    self.regs.set(instruction.rd, rs1 + rs2 + imm);
                 }
             }
         }
@@ -316,20 +329,20 @@ mod tests {
         machine.run();
 
         assert_eq!(machine.pc, 1);
-        assert_some_eq!(machine.regs.get(&RegisterID::A0), &2);
+        assert_eq!(machine.regs.get(&RegisterID::A0), 2);
     }
 
     #[test]
     fn run_executes_an_add_instruction() {
         let mut machine = Machine::new();
-        machine.regs.insert(RegisterID::A1, 2);
-        machine.regs.insert(RegisterID::A2, 3);
+        machine.regs.set(RegisterID::A1, 2);
+        machine.regs.set(RegisterID::A2, 3);
         machine.load_program(&[0b0000_0000_0000_0010_0110_0100_0010_0010]);
 
         machine.run();
 
         assert_eq!(machine.pc, 1);
-        assert_some_eq!(machine.regs.get(&RegisterID::A0), &6);
+        assert_eq!(machine.regs.get(&RegisterID::A0), 6);
     }
 
     #[test]
@@ -343,6 +356,6 @@ mod tests {
         machine.run();
 
         assert_eq!(machine.pc, 3);
-        assert_some_eq!(machine.regs.get(&RegisterID::A0), &3);
+        assert_eq!(machine.regs.get(&RegisterID::A0), 3);
     }
 }
