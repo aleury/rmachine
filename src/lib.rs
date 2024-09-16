@@ -12,7 +12,9 @@ type Result<T> = std::result::Result<T, Error>;
 
 type Word = u32;
 
-type Memory = HashMap<Word, Word>;
+type Address = u32;
+
+type Memory = HashMap<Address, Word>;
 
 #[derive(Debug, Default, Eq, PartialEq)]
 struct Registers {
