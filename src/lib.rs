@@ -1,10 +1,11 @@
 #![allow(unused, clippy::cast_lossless, clippy::cast_possible_truncation)]
-use std::{collections::HashMap, num::TryFromIntError};
+use std::{collections::HashMap, io::Write, num::TryFromIntError};
 
 #[derive(Debug, PartialEq)]
 enum Error {
     OpcodeUnknown(u32),
     RegisterUnknown(u32),
+    SyscallUnknown(u32),
     ImmediateValue(TryFromIntError),
 }
 
@@ -43,14 +44,26 @@ impl<const N: usize> From<[(RegisterID, Word); N]> for Registers {
     }
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
-struct Machine {
+#[derive(Debug, Eq, PartialEq)]
+struct Machine<W: Write> {
     pc: Word,
     mem: Memory,
     regs: Registers,
+    stdout: Option<W>,
 }
 
-impl Machine {
+impl<W: Write> Default for Machine<W> {
+    fn default() -> Self {
+        Self {
+            pc: 0,
+            stdout: None,
+            mem: Memory::default(),
+            regs: Registers::default(),
+        }
+    }
+}
+
+impl<W: Write> Machine<W> {
     fn new() -> Self {
         Self::default()
     }
@@ -73,6 +86,28 @@ impl Machine {
                     let imm = instruction.imm as Word;
                     self.regs.set(instruction.rd, rs1 + rs2 + imm);
                 }
+                Opcode::ECall => {
+                    match self.regs.get(&RegisterID::A7).try_into()? {
+                        Syscall::Write => {
+                            let fd = self.regs.get(&RegisterID::A0);
+                            let buf_addr = self.regs.get(&RegisterID::A1);
+                            let len = self.regs.get(&RegisterID::A2);
+
+                            let mut data = Vec::new();
+                            for addr in buf_addr..(buf_addr + len) {
+                                let value = self.mem.get(&addr).copied().unwrap_or_default();
+                                data.push(value);
+                            }
+
+                            // Casting u32 as u8 seems like a hack.
+                            // Should Memory := HashMap<Address, u8>?
+                            let mut bytes: Vec<u8> = data.into_iter().map(|v| v as u8).collect();
+                            if let Some(stdout) = &mut self.stdout {
+                                stdout.write_all(&bytes).expect("failed to write to stdout");
+                            };
+                        }
+                    }
+                }
                 Opcode::EBreak => break,
             }
         }
@@ -81,9 +116,26 @@ impl Machine {
 }
 
 #[derive(Debug, PartialEq)]
+enum Syscall {
+    Write,
+}
+
+impl TryFrom<Word> for Syscall {
+    type Error = Error;
+
+    fn try_from(word: Word) -> Result<Self> {
+        match word {
+            64 => Ok(Syscall::Write),
+            _ => Err(Error::SyscallUnknown(word)),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 enum Opcode {
     LoadImmediate,
     Add,
+    ECall,
     EBreak,
 }
 
@@ -94,6 +146,7 @@ impl TryFrom<Word> for Opcode {
         match word {
             0b00001 => Ok(Opcode::LoadImmediate),
             0b00010 => Ok(Opcode::Add),
+            0b10111 => Ok(Opcode::ECall),
             0b11000 => Ok(Opcode::EBreak),
             _ => Err(Error::OpcodeUnknown(word)),
         }
@@ -181,13 +234,34 @@ mod tests {
 
     #[test]
     fn new_returns_initialized_machine() {
-        let want = Machine {
+        let want: Machine<&mut Vec<u8>> = Machine {
             pc: 0u32,
+            stdout: None,
             mem: Memory::default(),
             regs: Registers::default(),
         };
         let got = Machine::new();
         assert_eq!(want, got);
+    }
+
+    #[test]
+    fn parsing_an_invalid_syscall_returns_an_error() {
+        assert_err_eq!(Syscall::try_from(0), Error::SyscallUnknown(0));
+    }
+
+    #[test]
+    fn syscalls_can_be_parsed_from_integer_ids() {
+        struct TestCase {
+            word: Word,
+            want: Syscall,
+        }
+        let cases = [TestCase {
+            word: 64,
+            want: Syscall::Write,
+        }];
+        for case in cases {
+            assert_ok_eq!(Syscall::try_from(case.word), case.want);
+        }
     }
 
     #[test]
@@ -209,6 +283,10 @@ mod tests {
             TestCase {
                 word: 0b00010,
                 want: Opcode::Add,
+            },
+            TestCase {
+                word: 0b10111,
+                want: Opcode::ECall,
             },
             TestCase {
                 word: 0b11000,
@@ -333,6 +411,16 @@ mod tests {
                 },
             },
             TestCase {
+                word: 0b0000_0000_0000_0000_0000_0000_0001_0111,
+                want: Instruction {
+                    opcode: Opcode::ECall,
+                    rd: RegisterID::X0,
+                    rs1: RegisterID::X0,
+                    rs2: RegisterID::X0,
+                    imm: 0,
+                },
+            },
+            TestCase {
                 word: 0b0000_0000_0000_0000_0000_0000_0001_1000,
                 want: Instruction {
                     opcode: Opcode::EBreak,
@@ -350,7 +438,7 @@ mod tests {
 
     #[test]
     fn run_executes_a_load_immediate_instruction() {
-        let mut machine = Machine {
+        let mut machine: Machine<&mut Vec<u8>> = Machine {
             mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
             ..Default::default()
         };
@@ -359,6 +447,7 @@ mod tests {
 
         let want = Machine {
             pc: 1,
+            stdout: None,
             regs: Registers::from([(RegisterID::A0, 2)]),
             mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
         };
@@ -367,7 +456,7 @@ mod tests {
 
     #[test]
     fn run_executes_an_add_instruction() {
-        let mut machine = Machine {
+        let mut machine: Machine<&mut Vec<u8>> = Machine {
             regs: Registers::from([(RegisterID::A1, 2), (RegisterID::A2, 3)]),
             mem: Memory::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
             ..Default::default()
@@ -377,6 +466,7 @@ mod tests {
 
         let want = Machine {
             pc: 1,
+            stdout: None,
             regs: Registers::from([
                 (RegisterID::A0, 6),
                 (RegisterID::A1, 2),
@@ -389,7 +479,7 @@ mod tests {
 
     #[test]
     fn run_executes_an_ebreak_instruction() {
-        let mut machine = Machine {
+        let mut machine: Machine<&mut Vec<u8>> = Machine {
             mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
             ..Default::default()
         };
@@ -398,6 +488,7 @@ mod tests {
 
         let want = Machine {
             pc: 1,
+            stdout: None,
             regs: Registers::default(),
             mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
         };
@@ -405,8 +496,39 @@ mod tests {
     }
 
     #[test]
-    fn run_executes_multiple_add_instructions() {
+    fn run_executes_an_ecall_instruction_that_writes_data_to_stdout() {
+        let mut output: Vec<u8> = Vec::new();
         let mut machine = Machine {
+            pc: 0,
+            stdout: Some(&mut output),
+            regs: Registers::from([
+                (RegisterID::A0, 1),
+                (RegisterID::A1, 6),
+                (RegisterID::A2, 5),
+                (RegisterID::A7, 64),
+            ]),
+            mem: Memory::from([
+                // ECall
+                (0, 0b0000_0000_0000_0000_0000_0000_0001_0111),
+                // EBreak
+                (1, 0b0000_0000_0000_0000_0000_0000_0001_1000),
+                (6, 'h'.into()),
+                (7, 'e'.into()),
+                (8, 'l'.into()),
+                (9, 'l'.into()),
+                (10, 'o'.into()),
+            ]),
+        };
+        assert_ok!(machine.run());
+
+        let want = "hello".to_string();
+        let got = String::from_utf8(output).unwrap();
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn run_executes_multiple_add_instructions() {
+        let mut machine: Machine<&mut Vec<u8>> = Machine {
             mem: Memory::from([
                 (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
@@ -419,6 +541,7 @@ mod tests {
 
         let want = Machine {
             pc: 4,
+            stdout: None,
             regs: Registers::from([(RegisterID::A0, 3)]),
             mem: Memory::from([
                 (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
