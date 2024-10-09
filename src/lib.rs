@@ -15,7 +15,32 @@ type Word = u32;
 
 type Address = u32;
 
-type Memory = HashMap<Address, u8>;
+#[derive(Debug, Default, Eq, PartialEq)]
+struct Memory {
+    inner: HashMap<Address, u8>,
+}
+
+impl Memory {
+    fn get(&self, addr: Address) -> u8 {
+        *self.inner.get(&addr).unwrap_or(&u8::default())
+    }
+
+    fn read(&self, addr: Address, len: usize) -> Vec<u8> {
+        let mut data = Vec::new();
+        for offset in 0..len {
+            data.push(self.get(addr + offset as u32));
+        }
+        data
+    }
+}
+
+impl<const N: usize> From<[(Address, u8); N]> for Memory {
+    fn from(values: [(Address, u8); N]) -> Self {
+        Self {
+            inner: HashMap::from(values),
+        }
+    }
+}
 
 #[derive(Debug, Default, Eq, PartialEq)]
 struct Registers {
@@ -69,10 +94,10 @@ impl<W: Write> Machine<W> {
     }
 
     fn next(&mut self) -> Result<Instruction> {
-        let b1 = *self.mem.get(&self.pc).unwrap_or(&0);
-        let b2 = *self.mem.get(&(self.pc + 1)).unwrap_or(&0);
-        let b3 = *self.mem.get(&(self.pc + 2)).unwrap_or(&0);
-        let b4 = *self.mem.get(&(self.pc + 3)).unwrap_or(&0);
+        let b1 = self.mem.get(self.pc);
+        let b2 = self.mem.get(self.pc + 1);
+        let b3 = self.mem.get(self.pc + 2);
+        let b4 = self.mem.get(self.pc + 3);
         let word = u32::from_be_bytes([b1, b2, b3, b4]);
         Instruction::try_from(word)
     }
@@ -92,30 +117,20 @@ impl<W: Write> Machine<W> {
                     let imm = instruction.imm as Word;
                     self.regs.set(instruction.rd, rs1 + rs2 + imm);
                 }
-                Opcode::ECall => {
-                    match self.regs.get(&RegisterID::A7).try_into()? {
-                        Syscall::Write => {
-                            let fd = self.regs.get(&RegisterID::A0);
-                            assert_eq!(fd, 1, "expected file descriptor to specify stdout (1)");
+                Opcode::ECall => match self.regs.get(&RegisterID::A7).try_into()? {
+                    Syscall::Write => {
+                        let fd = self.regs.get(&RegisterID::A0);
+                        assert_eq!(fd, 1, "expected file descriptor to specify stdout (1)");
 
-                            let buf_addr = self.regs.get(&RegisterID::A1);
-                            let len = self.regs.get(&RegisterID::A2);
+                        let buf_addr = self.regs.get(&RegisterID::A1);
+                        let len = self.regs.get(&RegisterID::A2);
+                        let data = self.mem.read(buf_addr, len as usize);
 
-                            let mut data = Vec::new();
-                            for addr in buf_addr..(buf_addr + len) {
-                                let value = self.mem.get(&addr).copied().unwrap_or_default();
-                                data.push(value);
-                            }
-
-                            // Casting u32 as u8 seems like a hack.
-                            // Should Memory := HashMap<Address, u8>?
-                            let mut bytes: Vec<u8> = data.into_iter().map(|v| v as u8).collect();
-                            if let Some(stdout) = &mut self.stdout {
-                                stdout.write_all(&bytes).expect("failed to write to stdout");
-                            };
-                        }
+                        if let Some(stdout) = &mut self.stdout {
+                            stdout.write_all(&data).expect("failed to write to stdout");
+                        };
                     }
-                }
+                },
                 Opcode::EBreak => break,
             }
         }
@@ -495,7 +510,7 @@ mod tests {
                 (RegisterID::A1, 2),
                 (RegisterID::A2, 3),
             ]),
-            mem: HashMap::from([
+            mem: Memory::from([
                 (0, 0b0000_0000),
                 (1, 0b0000_0010),
                 (2, 0b0110_0100),
