@@ -17,25 +17,25 @@ type Address = u32;
 
 #[derive(Debug, Default, Eq, PartialEq)]
 struct Memory {
-    inner: HashMap<Address, u8>,
+    inner: HashMap<Address, Word>,
 }
 
 impl Memory {
-    fn get(&self, addr: Address) -> u8 {
-        *self.inner.get(&addr).unwrap_or(&u8::default())
+    fn get(&self, addr: Address) -> Word {
+        *self.inner.get(&addr).unwrap_or(&Word::default())
     }
 
-    fn read(&self, addr: Address, len: usize) -> Vec<u8> {
+    fn read(&self, addr: Address, len: usize) -> Vec<Word> {
         let mut data = Vec::new();
         for offset in 0..len {
-            data.push(self.get(addr + offset as u32));
+            data.push(self.get(addr + offset as Word));
         }
         data
     }
 }
 
-impl<const N: usize> From<[(Address, u8); N]> for Memory {
-    fn from(values: [(Address, u8); N]) -> Self {
+impl<const N: usize> From<[(Address, Word); N]> for Memory {
+    fn from(values: [(Address, Word); N]) -> Self {
         Self {
             inner: HashMap::from(values),
         }
@@ -70,42 +70,42 @@ impl<const N: usize> From<[(RegisterID, Word); N]> for Registers {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct Machine<W: Write> {
+struct Machine {
     pc: Word,
     mem: Memory,
     regs: Registers,
-    stdout: Option<W>,
+    out: Vec<u8>,
 }
 
-impl<W: Write> Default for Machine<W> {
+impl Default for Machine {
     fn default() -> Self {
         Self {
             pc: 0,
-            stdout: None,
+            out: vec![],
             mem: Memory::default(),
             regs: Registers::default(),
         }
     }
 }
 
-impl<W: Write> Machine<W> {
+impl Machine {
     fn new() -> Self {
         Self::default()
     }
 
     fn next(&mut self) -> Result<Instruction> {
-        let b1 = self.mem.get(self.pc);
-        let b2 = self.mem.get(self.pc + 1);
-        let b3 = self.mem.get(self.pc + 2);
-        let b4 = self.mem.get(self.pc + 3);
-        let word = u32::from_be_bytes([b1, b2, b3, b4]);
+        let word = self.mem.get(self.pc);
         Instruction::try_from(word)
+    }
+
+    fn write_byte(&mut self, data: u8) {
+        self.out.push(data);
     }
 
     fn run(&mut self) -> Result<()> {
         loop {
             let instruction = self.next()?;
-            self.pc += 4;
+            self.pc += 1;
 
             match instruction.opcode {
                 Opcode::LoadImmediate => {
@@ -124,11 +124,11 @@ impl<W: Write> Machine<W> {
 
                         let buf_addr = self.regs.get(&RegisterID::A1);
                         let len = self.regs.get(&RegisterID::A2);
-                        let data = self.mem.read(buf_addr, len as usize);
 
-                        if let Some(stdout) = &mut self.stdout {
-                            stdout.write_all(&data).expect("failed to write to stdout");
-                        };
+                        for i in 0..len {
+                            let word = self.mem.get(buf_addr + i as Address);
+                            self.write_byte(word as u8);
+                        }
                     }
                 },
                 Opcode::EBreak => break,
@@ -257,9 +257,9 @@ mod tests {
 
     #[test]
     fn new_returns_initialized_machine() {
-        let want: Machine<&mut Vec<u8>> = Machine {
+        let want: Machine = Machine {
             pc: 0u32,
-            stdout: None,
+            out: vec![],
             mem: Memory::default(),
             regs: Registers::default(),
         };
@@ -461,185 +461,141 @@ mod tests {
 
     #[test]
     fn run_executes_a_load_immediate_instruction() {
-        let mut machine: Machine<&mut Vec<u8>> = Machine {
-            mem: Memory::from([
-                (0, 0b0000_0000),
-                (1, 0b0000_0100),
-                (2, 0b0000_0000),
-                (3, 0b0010_0001),
-            ]),
+        let mut machine = Machine {
+            mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
             ..Default::default()
         };
 
         machine.run();
 
         let want = Machine {
-            pc: 4,
-            stdout: None,
+            pc: 1,
+            out: Vec::new(),
             regs: Registers::from([(RegisterID::A0, 2)]),
-            mem: Memory::from([
-                (0, 0b0000_0000),
-                (1, 0b0000_0100),
-                (2, 0b0000_0000),
-                (3, 0b0010_0001),
-            ]),
+            mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
         };
         assert_eq!(want, machine);
     }
 
     #[test]
     fn run_executes_an_add_instruction() {
-        let mut machine: Machine<&mut Vec<u8>> = Machine {
+        let mut machine = Machine {
             regs: Registers::from([(RegisterID::A1, 2), (RegisterID::A2, 3)]),
-            mem: Memory::from([
-                (0, 0b0000_0000),
-                (1, 0b0000_0010),
-                (2, 0b0110_0100),
-                (3, 0b0010_0010),
-            ]),
+            mem: Memory::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
             ..Default::default()
         };
 
         machine.run();
 
         let want = Machine {
-            pc: 4,
-            stdout: None,
+            pc: 1,
+            out: Vec::new(),
             regs: Registers::from([
                 (RegisterID::A0, 6),
                 (RegisterID::A1, 2),
                 (RegisterID::A2, 3),
             ]),
-            mem: Memory::from([
-                (0, 0b0000_0000),
-                (1, 0b0000_0010),
-                (2, 0b0110_0100),
-                (3, 0b0010_0010),
-            ]),
+            mem: Memory::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
         };
         assert_eq!(want, machine);
     }
 
     #[test]
     fn run_executes_an_ebreak_instruction() {
-        let mut machine: Machine<&mut Vec<u8>> = Machine {
-            mem: Memory::from([
-                (0, 0b0000_0000),
-                (1, 0b0000_0000),
-                (2, 0b0000_0000),
-                (3, 0b0001_1000),
-            ]),
+        let mut machine = Machine {
+            mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
             ..Default::default()
         };
 
         assert_ok!(machine.run());
 
         let want = Machine {
-            pc: 4,
-            stdout: None,
+            pc: 1,
+            out: Vec::new(),
             regs: Registers::default(),
-            mem: Memory::from([
-                (0, 0b0000_0000),
-                (1, 0b0000_0000),
-                (2, 0b0000_0000),
-                (3, 0b0001_1000),
-            ]),
+            mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
         };
         assert_eq!(want, machine);
     }
 
     #[test]
     fn run_executes_an_ecall_instruction_that_writes_data_to_stdout() {
-        let mut output: Vec<u8> = Vec::new();
+        // TODO: Implement `add` in a depth-first approach:
+        // write a test that can assemble a program from source and execute it.
+        /*
+        jmp 6
+        'h'
+        'e'
+        'l'
+        'l'
+        'o'
+        li a0, 1  # fd = 1 (stdout)
+        la a1, 1
+        li a2, 5
+        li a7, 64 # write syscall
+        ecall
+        ebreak
+        */
+        let mut out = Vec::new();
         let mut machine = Machine {
             pc: 0,
-            stdout: Some(&mut output),
+            out,
             regs: Registers::from([
                 (RegisterID::A0, 1),  // fd = 1 (stdout)
-                (RegisterID::A1, 8),  // *buf = 8
+                (RegisterID::A1, 2),  // *buf = 2
                 (RegisterID::A2, 5),  // len = 5
                 (RegisterID::A7, 64), // syscall "write"
             ]),
             mem: Memory::from([
                 // ECall
-                (0, 0b0000_0000),
-                (1, 0b0000_0000),
-                (2, 0b0000_0000),
-                (3, 0b0001_0111),
+                (0, 0b0000_0000_0001_0111),
                 // EBreak
-                (4, 0b0000_0000),
-                (5, 0b0000_0000),
-                (6, 0b0000_0000),
-                (7, 0b0001_1000),
+                (1, 0b0000_0000_0001_1000),
                 // data
-                (8, 'h'.try_into().unwrap()),
-                (9, 'e'.try_into().unwrap()),
-                (10, 'l'.try_into().unwrap()),
-                (11, 'l'.try_into().unwrap()),
-                (12, 'o'.try_into().unwrap()),
+                (2, 'h' as Word),
+                (3, 'e' as Word),
+                (4, 'l' as Word),
+                (5, 'l' as Word),
+                (6, 'o' as Word),
             ]),
         };
         assert_ok!(machine.run());
 
         let want = "hello".to_string();
-        let got = String::from_utf8(output).unwrap();
+        let got = String::from_utf8(machine.out).unwrap();
         assert_eq!(want, got);
     }
 
     #[test]
     fn run_executes_multiple_add_instructions() {
-        let mut machine: Machine<&mut Vec<u8>> = Machine {
+        let mut machine = Machine {
             mem: Memory::from([
                 // Add
-                (0, 0b0000_0000),
-                (1, 0b0000_0010),
-                (2, 0b0000_0010),
-                (3, 0b0010_0010),
+                (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 // Add
-                (4, 0b0000_0000),
-                (5, 0b0000_0010),
-                (6, 0b0000_0010),
-                (7, 0b0010_0010),
+                (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 // Add
-                (8, 0b0000_0000),
-                (9, 0b0000_0010),
-                (10, 0b0000_0010),
-                (11, 0b0010_0010),
+                (2, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 // EBreak
-                (12, 0b0000_0000),
-                (13, 0b0000_0000),
-                (14, 0b0000_0000),
-                (15, 0b0001_1000),
+                (3, 0b0000_0000_0000_0000_0000_0000_0001_1000),
             ]),
             ..Default::default()
         };
         assert_ok!(machine.run());
 
         let want = Machine {
-            pc: 16,
-            stdout: None,
+            pc: 4,
+            out: Vec::new(),
             regs: Registers::from([(RegisterID::A0, 3)]),
             mem: Memory::from([
                 // Add
-                (0, 0b0000_0000),
-                (1, 0b0000_0010),
-                (2, 0b0000_0010),
-                (3, 0b0010_0010),
+                (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 // Add
-                (4, 0b0000_0000),
-                (5, 0b0000_0010),
-                (6, 0b0000_0010),
-                (7, 0b0010_0010),
+                (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 // Add
-                (8, 0b0000_0000),
-                (9, 0b0000_0010),
-                (10, 0b0000_0010),
-                (11, 0b0010_0010),
+                (2, 0b0000_0000_0000_0010_0000_0010_0010_0010),
                 // EBreak
-                (12, 0b0000_0000),
-                (13, 0b0000_0000),
-                (14, 0b0000_0000),
-                (15, 0b0001_1000),
+                (3, 0b0000_0000_0000_0000_0000_0000_0001_1000),
             ]),
         };
         assert_eq!(want, machine);
