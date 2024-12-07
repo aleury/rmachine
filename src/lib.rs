@@ -1,12 +1,10 @@
-#![allow(unused, clippy::cast_lossless, clippy::cast_possible_truncation)]
-use std::{collections::HashMap, io::Write, num::TryFromIntError};
+#![allow(unused, clippy::cast_possible_truncation)]
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 enum Error {
     OpcodeUnknown(u32),
     RegisterUnknown(u32),
-    SyscallUnknown(u32),
-    ImmediateValue(TryFromIntError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -23,6 +21,10 @@ struct Memory {
 impl Memory {
     fn get(&self, addr: Address) -> Word {
         *self.inner.get(&addr).unwrap_or(&Word::default())
+    }
+
+    fn set(&mut self, addr: Address, word: Word) {
+        self.inner.insert(addr, word);
     }
 
     fn read(&self, addr: Address, len: usize) -> Vec<Word> {
@@ -44,48 +46,37 @@ impl<const N: usize> From<[(Address, Word); N]> for Memory {
 
 #[derive(Debug, Default, Eq, PartialEq)]
 struct Registers {
-    inner: HashMap<RegisterID, Word>,
+    inner: HashMap<Reg, Word>,
 }
 
 impl Registers {
-    fn get(&self, reg: &RegisterID) -> Word {
+    fn get(&self, reg: &Reg) -> Word {
         *self.inner.get(reg).unwrap_or(&Word::default())
     }
 
-    fn set(&mut self, reg: RegisterID, value: Word) {
+    fn set(&mut self, reg: Reg, value: Word) {
         let value = match reg {
-            RegisterID::X0 => 0,
+            Reg::zero => 0,
             _ => value,
         };
         self.inner.insert(reg, value);
     }
 }
 
-impl<const N: usize> From<[(RegisterID, Word); N]> for Registers {
-    fn from(values: [(RegisterID, Word); N]) -> Self {
+impl<const N: usize> From<[(Reg, Word); N]> for Registers {
+    fn from(values: [(Reg, Word); N]) -> Self {
         Self {
             inner: HashMap::from(values),
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 struct Machine {
     pc: Word,
     mem: Memory,
     regs: Registers,
     out: Vec<u8>,
-}
-
-impl Default for Machine {
-    fn default() -> Self {
-        Self {
-            pc: 0,
-            out: vec![],
-            mem: Memory::default(),
-            regs: Registers::default(),
-        }
-    }
 }
 
 impl Machine {
@@ -107,59 +98,34 @@ impl Machine {
             let instruction = self.next()?;
             self.pc += 1;
 
-            match instruction.opcode {
-                Opcode::LoadImmediate => {
-                    self.regs.set(instruction.rd, instruction.imm as Word);
-                }
-                Opcode::Add => {
-                    let rs1 = self.regs.get(&instruction.rs1);
-                    let rs2 = self.regs.get(&instruction.rs2);
-                    let imm = instruction.imm as Word;
-                    self.regs.set(instruction.rd, rs1 + rs2 + imm);
-                }
-                Opcode::ECall => match self.regs.get(&RegisterID::A7).try_into()? {
-                    Syscall::Write => {
-                        let fd = self.regs.get(&RegisterID::A0);
-                        assert_eq!(fd, 1, "expected file descriptor to specify stdout (1)");
+            let opcode = instruction.opcode;
+            let rd = instruction.rd;
+            let rs1 = self.regs.get(&instruction.rs1);
+            let rs2 = self.regs.get(&instruction.rs2);
+            let imm = instruction.imm;
 
-                        let buf_addr = self.regs.get(&RegisterID::A1);
-                        let len = self.regs.get(&RegisterID::A2);
-
-                        for i in 0..len {
-                            let word = self.mem.get(buf_addr + i as Address);
-                            self.write_byte(word as u8);
-                        }
-                    }
-                },
-                Opcode::EBreak => break,
+            match opcode {
+                Opcode::AddImmediate => {
+                    self.regs.set(rd, rs1 + imm);
+                }
+                Opcode::AddUpperImmediateToProgramCounter => {
+                    self.regs.set(rd, self.pc + (imm << 12));
+                }
+                Opcode::LoadUpperImmediate => {
+                    self.regs.set(rd, imm << 12);
+                }
             }
         }
         Ok(())
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum Syscall {
-    Write,
-}
-
-impl TryFrom<Word> for Syscall {
-    type Error = Error;
-
-    fn try_from(word: Word) -> Result<Self> {
-        match word {
-            64 => Ok(Syscall::Write),
-            _ => Err(Error::SyscallUnknown(word)),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 enum Opcode {
-    LoadImmediate,
-    Add,
-    ECall,
-    EBreak,
+    #[default]
+    AddImmediate,
+    AddUpperImmediateToProgramCounter,
+    LoadUpperImmediate,
 }
 
 impl TryFrom<Word> for Opcode {
@@ -167,86 +133,161 @@ impl TryFrom<Word> for Opcode {
 
     fn try_from(word: Word) -> Result<Self> {
         match word {
-            0b00001 => Ok(Opcode::LoadImmediate),
-            0b00010 => Ok(Opcode::Add),
-            0b10111 => Ok(Opcode::ECall),
-            0b11000 => Ok(Opcode::EBreak),
+            0b001_0011 => Ok(Opcode::AddImmediate),
+            0b001_0111 => Ok(Opcode::AddUpperImmediateToProgramCounter),
+            0b011_0111 => Ok(Opcode::LoadUpperImmediate),
             _ => Err(Error::OpcodeUnknown(word)),
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
-enum RegisterID {
-    X0,
-    A0,
-    A1,
-    A2,
-    A3,
-    A4,
-    A5,
-    A6,
-    A7,
-    A8,
-    A9,
-    A10,
-    A11,
-    A12,
-    RA,
-    SP,
+impl From<Opcode> for Word {
+    fn from(value: Opcode) -> Self {
+        match value {
+            Opcode::AddImmediate => 0b001_0011,
+            Opcode::AddUpperImmediateToProgramCounter => 0b001_0111,
+            Opcode::LoadUpperImmediate => 0b011_0111,
+            _ => todo!(),
+        }
+    }
 }
 
-impl TryFrom<Word> for RegisterID {
+// x0 zero Hard-wired zero —
+// x1 ra Return address Caller
+// x2 sp Stack pointer Callee
+// x3 gp Global pointer —
+// x4 tp Thread pointer —
+// x5 t0 Temporary/alternate link register Caller
+// x6–7 t1–2 Temporaries Caller
+// x8 s0/fp Saved register/frame pointer Callee
+// x9 s1 Saved register Callee
+// x10–11 a0–1 Function arguments/return values Caller
+// x12–17 a2–7 Function arguments Caller
+// x18–27 s2–11 Saved registers Callee
+// x28–31 t3–6 Temporaries Caller
+// f0–7 ft0–7 FP temporaries Caller
+// f8–9 fs0–1 FP saved registers Callee
+// f10–11 fa0–1 FP arguments/return values Caller
+// f12–17 fa2–7 FP arguments Caller
+// f18–27 fs2–11 FP saved registers Callee
+// f28–31 ft8–11 FP temporaries Caller
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, PartialOrd)]
+enum Reg {
+    #[default]
+    zero,
+    ra,
+    sp,
+    gp,
+    tp,
+    t0,
+    t1,
+    t2,
+    s0,
+    s1,
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+}
+
+impl TryFrom<Word> for Reg {
     type Error = Error;
 
     fn try_from(word: Word) -> Result<Self> {
         match word {
-            0b0000 => Ok(RegisterID::X0),
-            0b0001 => Ok(RegisterID::A0),
-            0b0010 => Ok(RegisterID::A1),
-            0b0011 => Ok(RegisterID::A2),
-            0b0100 => Ok(RegisterID::A3),
-            0b0101 => Ok(RegisterID::A4),
-            0b0110 => Ok(RegisterID::A5),
-            0b0111 => Ok(RegisterID::A6),
-            0b1000 => Ok(RegisterID::A7),
-            0b1001 => Ok(RegisterID::A8),
-            0b1010 => Ok(RegisterID::A9),
-            0b1011 => Ok(RegisterID::A10),
-            0b1100 => Ok(RegisterID::A11),
-            0b1101 => Ok(RegisterID::A12),
-            0b1110 => Ok(RegisterID::RA),
-            0b1111 => Ok(RegisterID::SP),
+            0b00000 => Ok(Reg::zero),
+            0b01010 => Ok(Reg::a0),
             _ => Err(Error::RegisterUnknown(word)),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+impl From<Reg> for Word {
+    fn from(register_id: Reg) -> Self {
+        match register_id {
+            Reg::zero => 0b00000,
+            Reg::a0 => 0b01010,
+            _ => todo!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Default)]
 struct Instruction {
     opcode: Opcode,
-    rd: RegisterID,
-    rs1: RegisterID,
-    rs2: RegisterID,
-    imm: u16,
+    rd: Reg,
+    rs1: Reg,
+    rs2: Reg,
+    imm: u32,
 }
 
 impl TryFrom<Word> for Instruction {
     type Error = Error;
 
     fn try_from(word: Word) -> Result<Self> {
-        let opcode = (word & 0x1f).try_into()?;
-        let rd = ((word >> 5) & 0xf).try_into()?;
-        let rs1 = ((word >> 9) & 0xf).try_into()?;
-        let rs2 = ((word >> 13) & 0xf).try_into()?;
-        let imm = (word >> 17).try_into().map_err(Error::ImmediateValue)?;
-        Ok(Self {
-            opcode,
-            rd,
-            rs1,
-            rs2,
-            imm,
-        })
+        let opcode = (word & 0b0111_1111).try_into()?;
+        match opcode {
+            Opcode::AddImmediate => {
+                let rd = ((word >> 7) & 0b0001_1111).try_into()?;
+                let rs1 = ((word >> 11) & 0b0001_1111).try_into()?;
+                let imm = (word >> 20);
+                Ok(Instruction {
+                    opcode,
+                    rd,
+                    rs1,
+                    imm,
+                    ..Default::default()
+                })
+            }
+            Opcode::AddUpperImmediateToProgramCounter => {
+                let rd = ((word >> 7) & 0b0001_1111).try_into()?;
+                let imm = (word >> 12);
+                Ok(Instruction {
+                    opcode,
+                    rd,
+                    imm,
+                    ..Default::default()
+                })
+            }
+            Opcode::LoadUpperImmediate => {
+                let rd = ((word >> 7) & 0b0001_1111).try_into()?;
+                let imm = (word >> 12);
+                Ok(Instruction {
+                    opcode,
+                    rd,
+                    imm,
+                    ..Default::default()
+                })
+            }
+        }
+    }
+}
+
+impl From<Instruction> for Word {
+    fn from(instruction: Instruction) -> Self {
+        match instruction.opcode {
+            Opcode::AddImmediate => {
+                let opcode: Word = instruction.opcode.into();
+                let rd: Word = instruction.rd.into();
+                let f3: Word = 0b000;
+                let rs1: Word = instruction.rs1.into();
+                let imm: Word = instruction.imm;
+
+                opcode | (rd << 7) | (f3 << 11) | (rs1 << 14) | (imm << 20)
+            }
+            Opcode::AddUpperImmediateToProgramCounter | Opcode::LoadUpperImmediate => {
+                let opcode: Word = instruction.opcode.into();
+                let rd: Word = instruction.rd.into();
+                let imm: Word = instruction.imm;
+
+                opcode | (rd << 7) | (imm << 12)
+            }
+            _ => todo!(),
+        }
     }
 }
 
@@ -256,358 +297,122 @@ mod tests {
     use claims::{assert_err, assert_err_eq, assert_ok, assert_ok_eq, assert_some_eq};
 
     #[test]
-    fn new_returns_initialized_machine() {
-        let want: Machine = Machine {
-            pc: 0u32,
-            out: vec![],
-            mem: Memory::default(),
-            regs: Registers::default(),
-        };
-        let got = Machine::new();
-        assert_eq!(want, got);
-    }
-
-    #[test]
-    fn parsing_an_invalid_syscall_returns_an_error() {
-        assert_err_eq!(Syscall::try_from(0), Error::SyscallUnknown(0));
-    }
-
-    #[test]
-    fn syscalls_can_be_parsed_from_integer_ids() {
+    fn decodes_and_encodes_instructions_successfully() {
         struct TestCase {
             word: Word,
-            want: Syscall,
+            instruction: Instruction,
         }
-        let cases = [TestCase {
-            word: 64,
-            want: Syscall::Write,
-        }];
-        for case in cases {
-            assert_ok_eq!(Syscall::try_from(case.word), case.want);
-        }
-    }
-
-    #[test]
-    fn parsing_an_invalid_opcode_returns_an_error() {
-        assert_err_eq!(Opcode::try_from(0), Error::OpcodeUnknown(0));
-    }
-
-    #[test]
-    fn opcodes_can_be_decoded_from_binary_representation() {
-        struct TestCase {
-            word: Word,
-            want: Opcode,
-        }
-        let cases = [
+        let cases = vec![
             TestCase {
-                word: 0b00001,
-                want: Opcode::LoadImmediate,
-            },
-            TestCase {
-                word: 0b00010,
-                want: Opcode::Add,
-            },
-            TestCase {
-                word: 0b10111,
-                want: Opcode::ECall,
-            },
-            TestCase {
-                word: 0b11000,
-                want: Opcode::EBreak,
-            },
-        ];
-        for case in cases {
-            assert_ok_eq!(Opcode::try_from(case.word), case.want);
-        }
-    }
-
-    #[test]
-    fn parsing_an_invalid_register_returns_an_error() {
-        assert_err_eq!(
-            RegisterID::try_from(0b10000),
-            Error::RegisterUnknown(0b10000)
-        );
-    }
-
-    #[test]
-    fn registers_can_be_decoded_from_binary_representation() {
-        struct TestCase {
-            word: Word,
-            want: RegisterID,
-        }
-        let cases = [
-            TestCase {
-                word: 0b0000,
-                want: RegisterID::X0,
-            },
-            TestCase {
-                word: 0b0001,
-                want: RegisterID::A0,
-            },
-            TestCase {
-                word: 0b0010,
-                want: RegisterID::A1,
-            },
-            TestCase {
-                word: 0b0011,
-                want: RegisterID::A2,
-            },
-            TestCase {
-                word: 0b0100,
-                want: RegisterID::A3,
-            },
-            TestCase {
-                word: 0b0101,
-                want: RegisterID::A4,
-            },
-            TestCase {
-                word: 0b0110,
-                want: RegisterID::A5,
-            },
-            TestCase {
-                word: 0b0111,
-                want: RegisterID::A6,
-            },
-            TestCase {
-                word: 0b1000,
-                want: RegisterID::A7,
-            },
-            TestCase {
-                word: 0b1001,
-                want: RegisterID::A8,
-            },
-            TestCase {
-                word: 0b1010,
-                want: RegisterID::A9,
-            },
-            TestCase {
-                word: 0b1011,
-                want: RegisterID::A10,
-            },
-            TestCase {
-                word: 0b1100,
-                want: RegisterID::A11,
-            },
-            TestCase {
-                word: 0b1101,
-                want: RegisterID::A12,
-            },
-            TestCase {
-                word: 0b1110,
-                want: RegisterID::RA,
-            },
-            TestCase {
-                word: 0b1111,
-                want: RegisterID::SP,
-            },
-        ];
-        for case in cases {
-            assert_ok_eq!(RegisterID::try_from(case.word), case.want);
-        }
-    }
-
-    #[test]
-    fn instructions_can_be_decoded_from_a_32_bit_words() {
-        struct TestCase {
-            word: Word,
-            want: Instruction,
-        }
-        let cases = [
-            TestCase {
-                word: 0b0000_0000_0000_0100_0000_0000_0010_0001,
-                want: Instruction {
-                    opcode: Opcode::LoadImmediate,
-                    rd: RegisterID::A0,
-                    rs1: RegisterID::X0,
-                    rs2: RegisterID::X0,
+                // U-Type:
+                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
+                word: 0b0000_0000_0000_0000_0010_0101_0011_0111,
+                instruction: Instruction {
+                    opcode: Opcode::LoadUpperImmediate,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
                     imm: 2,
                 },
             },
             TestCase {
-                word: 0b0000_0000_0000_0000_0110_0100_0010_0010,
-                want: Instruction {
-                    opcode: Opcode::Add,
-                    rd: RegisterID::A0,
-                    rs1: RegisterID::A1,
-                    rs2: RegisterID::A2,
-                    imm: 0,
+                // U-Type:
+                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
+                word: 0b0000_0000_0000_0000_0010_0101_0001_0111,
+                instruction: Instruction {
+                    opcode: Opcode::AddUpperImmediateToProgramCounter,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 2,
                 },
             },
             TestCase {
-                word: 0b0000_0000_0000_0000_0000_0000_0001_0111,
-                want: Instruction {
-                    opcode: Opcode::ECall,
-                    rd: RegisterID::X0,
-                    rs1: RegisterID::X0,
-                    rs2: RegisterID::X0,
-                    imm: 0,
-                },
-            },
-            TestCase {
-                word: 0b0000_0000_0000_0000_0000_0000_0001_1000,
-                want: Instruction {
-                    opcode: Opcode::EBreak,
-                    rd: RegisterID::X0,
-                    rs1: RegisterID::X0,
-                    rs2: RegisterID::X0,
-                    imm: 0,
+                // I-Type:
+                //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
+                word: 0b0000_0000_0010_0000_0000_0101_0001_0011,
+                instruction: Instruction {
+                    opcode: Opcode::AddImmediate,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 2,
                 },
             },
         ];
+
         for case in cases {
-            assert_ok_eq!(Instruction::try_from(case.word), case.want);
+            let got = Instruction::try_from(case.word).unwrap();
+            assert_eq!(
+                case.instruction, got,
+                "failed to decode instruction from word"
+            );
+
+            let got: Word = got.into();
+
+            assert_eq!(
+                case.word, got,
+                "failed to encode instruction into word: {:b}, {:b}",
+                case.word, got,
+            );
         }
     }
 
     #[test]
-    fn run_executes_a_load_immediate_instruction() {
-        let mut machine = Machine {
-            mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
+    fn executes_lui_instruction_successfully() {
+        let mut machine = Machine::default();
+
+        let instruction = Instruction {
+            opcode: Opcode::LoadUpperImmediate,
+            rd: Reg::a0,
+            imm: 2,
             ..Default::default()
         };
+        machine.mem.set(0, instruction.into());
 
         machine.run();
 
-        let want = Machine {
-            pc: 1,
-            out: Vec::new(),
-            regs: Registers::from([(RegisterID::A0, 2)]),
-            mem: Memory::from([(0, 0b0000_0000_0000_0100_0000_0000_0010_0001)]),
-        };
-        assert_eq!(want, machine);
-    }
-
-    #[test]
-    fn run_executes_an_add_instruction() {
-        let mut machine = Machine {
-            regs: Registers::from([(RegisterID::A1, 2), (RegisterID::A2, 3)]),
-            mem: Memory::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
-            ..Default::default()
-        };
-
-        machine.run();
-
-        let want = Machine {
-            pc: 1,
-            out: Vec::new(),
-            regs: Registers::from([
-                (RegisterID::A0, 6),
-                (RegisterID::A1, 2),
-                (RegisterID::A2, 3),
-            ]),
-            mem: Memory::from([(0, 0b0000_0000_0000_0010_0110_0100_0010_0010)]),
-        };
-        assert_eq!(want, machine);
-    }
-
-    #[test]
-    fn run_executes_an_ebreak_instruction() {
-        let mut machine = Machine {
-            mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
-            ..Default::default()
-        };
-
-        assert_ok!(machine.run());
-
-        let want = Machine {
-            pc: 1,
-            out: Vec::new(),
-            regs: Registers::default(),
-            mem: Memory::from([(0, 0b0000_0000_0000_0000_0000_0000_0001_1000)]),
-        };
-        assert_eq!(want, machine);
-    }
-
-    #[test]
-    fn run_executes_an_ecall_instruction_that_writes_data_to_stdout() {
-        // TODO: Implement `add` in a depth-first approach:
-        // write a test that can assemble a program from source and execute it.
-        /*
-        jmp 6
-        'h'
-        'e'
-        'l'
-        'l'
-        'o'
-        li a0, 1  # fd = 1 (stdout)
-        la a1, 1
-        li a2, 5
-        li a7, 64 # write syscall
-        ecall
-        ebreak
-        */
-        let mut out = Vec::new();
-        let mut machine = Machine {
-            pc: 0,
-            out,
-            regs: Registers::from([
-                (RegisterID::A0, 1),  // fd = 1 (stdout)
-                (RegisterID::A1, 2),  // *buf = 2
-                (RegisterID::A2, 5),  // len = 5
-                (RegisterID::A7, 64), // syscall "write"
-            ]),
-            mem: Memory::from([
-                // ECall
-                (0, 0b0000_0000_0001_0111),
-                // EBreak
-                (1, 0b0000_0000_0001_1000),
-                // data
-                (2, 'h' as Word),
-                (3, 'e' as Word),
-                (4, 'l' as Word),
-                (5, 'l' as Word),
-                (6, 'o' as Word),
-            ]),
-        };
-        assert_ok!(machine.run());
-
-        let want = "hello".to_string();
-        let got = String::from_utf8(machine.out).unwrap();
+        let want = 2 << 12;
+        let got = machine.regs.get(&Reg::a0);
         assert_eq!(want, got);
     }
 
     #[test]
-    fn run_executes_multiple_add_instructions() {
-        let mut machine = Machine {
-            mem: Memory::from([
-                // Add
-                (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
-                // Add
-                (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
-                // Add
-                (2, 0b0000_0000_0000_0010_0000_0010_0010_0010),
-                // EBreak
-                (3, 0b0000_0000_0000_0000_0000_0000_0001_1000),
-            ]),
+    fn executes_auipc_instruction_successfully() {
+        let mut machine = Machine::default();
+
+        let instruction = Instruction {
+            opcode: Opcode::AddUpperImmediateToProgramCounter,
+            rd: Reg::a0,
+            imm: 2,
             ..Default::default()
         };
-        assert_ok!(machine.run());
+        machine.mem.set(0, instruction.into());
 
-        let want = Machine {
-            pc: 4,
-            out: Vec::new(),
-            regs: Registers::from([(RegisterID::A0, 3)]),
-            mem: Memory::from([
-                // Add
-                (0, 0b0000_0000_0000_0010_0000_0010_0010_0010),
-                // Add
-                (1, 0b0000_0000_0000_0010_0000_0010_0010_0010),
-                // Add
-                (2, 0b0000_0000_0000_0010_0000_0010_0010_0010),
-                // EBreak
-                (3, 0b0000_0000_0000_0000_0000_0000_0001_1000),
-            ]),
-        };
-        assert_eq!(want, machine);
+        machine.run();
+
+        let want = 1 + (2 << 12);
+        let got = machine.regs.get(&Reg::a0);
+        assert_eq!(want, got);
     }
 
     #[test]
-    fn x0_register_is_always_zero() {
-        let mut registers = Registers::default();
+    fn executes_addi_instruction_successfully() {
+        let mut machine = Machine::default();
 
-        assert_eq!(registers.get(&RegisterID::X0), 0);
+        let instruction = Instruction {
+            opcode: Opcode::AddImmediate,
+            rd: Reg::a0,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 2,
+        };
+        machine.mem.set(0, instruction.into());
 
-        registers.set(RegisterID::X0, 42);
-        assert_eq!(registers.get(&RegisterID::X0), 0);
+        machine.run();
+
+        let want = 2;
+        let got = machine.regs.get(&Reg::a0);
+        assert_eq!(want, got);
     }
 }
