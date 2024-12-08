@@ -111,6 +111,7 @@ impl Machine {
                 Opcode::AddUpperImmediateToProgramCounter => {
                     self.regs.set(rd, self.pc + (imm << 12));
                 }
+                Opcode::EnvironmentCall => todo!(),
                 Opcode::LoadUpperImmediate => {
                     self.regs.set(rd, imm << 12);
                 }
@@ -125,6 +126,7 @@ enum Opcode {
     #[default]
     AddImmediate,
     AddUpperImmediateToProgramCounter,
+    EnvironmentCall,
     LoadUpperImmediate,
 }
 
@@ -135,6 +137,7 @@ impl TryFrom<Word> for Opcode {
         match word {
             0b001_0011 => Ok(Opcode::AddImmediate),
             0b001_0111 => Ok(Opcode::AddUpperImmediateToProgramCounter),
+            0b111_0011 => Ok(Opcode::EnvironmentCall),
             0b011_0111 => Ok(Opcode::LoadUpperImmediate),
             _ => Err(Error::OpcodeUnknown(word)),
         }
@@ -146,8 +149,8 @@ impl From<Opcode> for Word {
         match value {
             Opcode::AddImmediate => 0b001_0011,
             Opcode::AddUpperImmediateToProgramCounter => 0b001_0111,
+            Opcode::EnvironmentCall => 0b111_0011,
             Opcode::LoadUpperImmediate => 0b011_0111,
-            _ => todo!(),
         }
     }
 }
@@ -253,6 +256,10 @@ impl TryFrom<Word> for Instruction {
                     ..Default::default()
                 })
             }
+            Opcode::EnvironmentCall => Ok(Instruction {
+                opcode,
+                ..Default::default()
+            }),
             Opcode::LoadUpperImmediate => {
                 let rd = ((word >> 7) & 0b0001_1111).try_into()?;
                 let imm = (word >> 12);
@@ -286,7 +293,7 @@ impl From<Instruction> for Word {
 
                 opcode | (rd << 7) | (imm << 12)
             }
-            _ => todo!(),
+            Opcode::EnvironmentCall => instruction.opcode.into(),
         }
     }
 }
@@ -304,11 +311,11 @@ mod tests {
         }
         let cases = vec![
             TestCase {
-                // U-Type:
-                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
-                word: 0b0000_0000_0000_0000_0010_0101_0011_0111,
+                // I-Type:
+                //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
+                word: 0b0000_0000_0010_0000_0000_0101_0001_0011,
                 instruction: Instruction {
-                    opcode: Opcode::LoadUpperImmediate,
+                    opcode: Opcode::AddImmediate,
                     rd: Reg::a0,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
@@ -328,11 +335,18 @@ mod tests {
                 },
             },
             TestCase {
-                // I-Type:
-                //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
-                word: 0b0000_0000_0010_0000_0000_0101_0001_0011,
+                word: 0b0000_0000_0000_0000_0000_0000_0111_0011,
                 instruction: Instruction {
-                    opcode: Opcode::AddImmediate,
+                    opcode: Opcode::EnvironmentCall,
+                    ..Default::default()
+                },
+            },
+            TestCase {
+                // U-Type:
+                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
+                word: 0b0000_0000_0000_0000_0010_0101_0011_0111,
+                instruction: Instruction {
+                    opcode: Opcode::LoadUpperImmediate,
                     rd: Reg::a0,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
