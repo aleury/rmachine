@@ -1,4 +1,8 @@
-#![allow(unused, clippy::cast_possible_truncation)]
+#![allow(
+    unused,
+    clippy::cast_possible_truncation,
+    clippy::needless_pass_by_value
+)]
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
