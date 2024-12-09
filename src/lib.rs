@@ -50,8 +50,8 @@ struct Registers {
 }
 
 impl Registers {
-    fn get(&self, reg: &Reg) -> Word {
-        *self.inner.get(reg).unwrap_or(&Word::default())
+    fn get(&self, reg: Reg) -> Word {
+        *self.inner.get(&reg).unwrap_or(&Word::default())
     }
 
     fn set(&mut self, reg: Reg, value: Word) {
@@ -100,8 +100,8 @@ impl Machine {
 
             let opcode = instruction.opcode;
             let rd = instruction.rd;
-            let rs1 = self.regs.get(&instruction.rs1);
-            let rs2 = self.regs.get(&instruction.rs2);
+            let rs1 = self.regs.get(instruction.rs1);
+            let rs2 = self.regs.get(instruction.rs2);
             let imm = instruction.imm;
 
             match opcode {
@@ -387,7 +387,7 @@ mod tests {
         machine.run();
 
         let want = 2 << 12;
-        let got = machine.regs.get(&Reg::a0);
+        let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got);
     }
 
@@ -406,7 +406,7 @@ mod tests {
         machine.run();
 
         let want = 1 + (2 << 12);
-        let got = machine.regs.get(&Reg::a0);
+        let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got);
     }
 
@@ -426,7 +426,7 @@ mod tests {
         machine.run();
 
         let want = 2;
-        let got = machine.regs.get(&Reg::a0);
+        let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got);
     }
 }
