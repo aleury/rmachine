@@ -3,7 +3,6 @@
     clippy::cast_possible_truncation,
     clippy::needless_pass_by_value
 )]
-
 use std::collections::HashMap;
 use std::{iter, str::Chars};
 
@@ -115,7 +114,7 @@ impl Machine {
 
             println!("pc = {:#?}", self.pc);
             println!("regs = {:#?}", self.regs);
-            println!("instr = {:#?}", instruction);
+            println!("instr = {instruction:#?}");
 
             let opcode = instruction.opcode;
             let rd = instruction.rd;
@@ -406,7 +405,7 @@ enum Token {
     Identifier(String),
 }
 
-fn tokenize<'a>(input: &str) -> Vec<Token> {
+fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens: Vec<Token> = vec![];
     let mut chars = input.chars().peekable();
 
@@ -417,7 +416,7 @@ fn tokenize<'a>(input: &str) -> Vec<Token> {
             '0'..='9' => {
                 let n: u32 = iter::once(ch)
                     .chain(iter::from_fn(|| {
-                        chars.by_ref().next_if(|c| c.is_ascii_digit())
+                        chars.by_ref().next_if(char::is_ascii_digit)
                     }))
                     .collect::<String>()
                     .parse()
@@ -428,7 +427,7 @@ fn tokenize<'a>(input: &str) -> Vec<Token> {
             'a'..='z' => {
                 let ident: String = iter::once(ch)
                     .chain(iter::from_fn(|| {
-                        chars.by_ref().next_if(|c| c.is_ascii_alphanumeric())
+                        chars.by_ref().next_if(char::is_ascii_alphanumeric)
                     }))
                     .collect();
                 tokens.push(lookup_ident(ident));
@@ -656,7 +655,7 @@ mod tests {
 
         let want = 1;
         let got = machine.regs.get(Reg::a0);
-        assert_eq!(want, got, "wrong a0: {}, expected: {}", want, got);
+        assert_eq!(want, got, "wrong a0: {want}, expected: {got}");
     }
 
     #[test]
@@ -686,7 +685,7 @@ mod tests {
 
         let got = tokenize("li a0, 1");
 
-        assert_eq!(want, got)
+        assert_eq!(want, got);
     }
 
     #[test]
