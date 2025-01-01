@@ -80,10 +80,13 @@ struct Machine {
     pc: Word,
     mem: Memory,
     regs: Registers,
-    out: Vec<u8>,
+    out: Vec<Word>,
 }
 
 impl Machine {
+    const SYSCALL_WRITE: u32 = 64;
+    const FD_STDOUT: u32 = 1;
+
     fn new() -> Self {
         Self::default()
     }
@@ -93,7 +96,7 @@ impl Machine {
         Instruction::try_from(word)
     }
 
-    fn write_byte(&mut self, data: u8) {
+    fn write(&mut self, data: Word) {
         self.out.push(data);
     }
 
@@ -101,6 +104,10 @@ impl Machine {
         loop {
             let instruction = self.next()?;
             self.pc += 1;
+
+            println!("pc = {:#?}", self.pc);
+            println!("regs = {:#?}", self.regs);
+            println!("instr = {:#?}", instruction);
 
             let opcode = instruction.opcode;
             let rd = instruction.rd;
@@ -115,7 +122,26 @@ impl Machine {
                 Opcode::AddUpperImmediateToProgramCounter => {
                     self.regs.set(rd, self.pc + (imm << 12));
                 }
-                Opcode::EnvironmentCall => todo!(),
+                Opcode::EnvironmentCall => {
+                    let syscall = self.regs.get(Reg::a7);
+                    match syscall {
+                        Machine::SYSCALL_WRITE => {
+                            let fd = self.regs.get(Reg::a0);
+                            let buf = self.regs.get(Reg::a1);
+                            let count = self.regs.get(Reg::a2);
+
+                            for i in 0..count {
+                                let c = self.mem.get(buf + i);
+                                match fd {
+                                    Machine::FD_STDOUT => self.out.push(c),
+
+                                    _ => panic!("Unknown fd: {fd}"),
+                                }
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                }
                 Opcode::LoadUpperImmediate => {
                     self.regs.set(rd, imm << 12);
                 }
@@ -199,6 +225,8 @@ enum Reg {
     a3,
     a4,
     a5,
+    a6,
+    a7,
 }
 
 impl TryFrom<Word> for Reg {
@@ -208,6 +236,9 @@ impl TryFrom<Word> for Reg {
         match word {
             0b00000 => Ok(Reg::zero),
             0b01010 => Ok(Reg::a0),
+            0b01011 => Ok(Reg::a1),
+            0b01100 => Ok(Reg::a2),
+            0b10001 => Ok(Reg::a7),
             _ => Err(Error::RegisterUnknown(word)),
         }
     }
@@ -218,6 +249,9 @@ impl From<Reg> for Word {
         match register_id {
             Reg::zero => 0b00000,
             Reg::a0 => 0b01010,
+            Reg::a1 => 0b01011,
+            Reg::a2 => 0b01100,
+            Reg::a7 => 0b10001,
             _ => todo!(),
         }
     }
@@ -232,16 +266,29 @@ struct Instruction {
     imm: u32,
 }
 
+impl Instruction {
+    const RD: u32 = 7;
+
+    const I_F3: u32 = 12;
+    const I_RS1: u32 = 15;
+    const I_IMM: u32 = 20;
+
+    const U_IMM: u32 = 12;
+
+    const OP_MASK: u32 = 0b0111_1111;
+    const R_MASK: u32 = 0b0001_1111;
+}
+
 impl TryFrom<Word> for Instruction {
     type Error = Error;
 
     fn try_from(word: Word) -> Result<Self> {
-        let opcode = (word & 0b0111_1111).try_into()?;
+        let opcode = (word & Instruction::OP_MASK).try_into()?;
         match opcode {
             Opcode::AddImmediate => {
-                let rd = ((word >> 7) & 0b0001_1111).try_into()?;
-                let rs1 = ((word >> 11) & 0b0001_1111).try_into()?;
-                let imm = (word >> 20);
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
+                let rs1 = ((word >> Instruction::I_RS1) & Instruction::R_MASK).try_into()?;
+                let imm = (word >> Instruction::I_IMM);
                 Ok(Instruction {
                     opcode,
                     rd,
@@ -251,8 +298,8 @@ impl TryFrom<Word> for Instruction {
                 })
             }
             Opcode::AddUpperImmediateToProgramCounter => {
-                let rd = ((word >> 7) & 0b0001_1111).try_into()?;
-                let imm = (word >> 12);
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
+                let imm = (word >> Instruction::U_IMM);
                 Ok(Instruction {
                     opcode,
                     rd,
@@ -265,8 +312,8 @@ impl TryFrom<Word> for Instruction {
                 ..Default::default()
             }),
             Opcode::LoadUpperImmediate => {
-                let rd = ((word >> 7) & 0b0001_1111).try_into()?;
-                let imm = (word >> 12);
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
+                let imm = (word >> Instruction::U_IMM);
                 Ok(Instruction {
                     opcode,
                     rd,
@@ -288,14 +335,18 @@ impl From<Instruction> for Word {
                 let rs1: Word = instruction.rs1.into();
                 let imm: Word = instruction.imm;
 
-                opcode | (rd << 7) | (f3 << 11) | (rs1 << 14) | (imm << 20)
+                opcode
+                    | (rd << Instruction::RD)
+                    | (f3 << Instruction::I_F3)
+                    | (rs1 << Instruction::I_RS1)
+                    | (imm << Instruction::I_IMM)
             }
             Opcode::AddUpperImmediateToProgramCounter | Opcode::LoadUpperImmediate => {
                 let opcode: Word = instruction.opcode.into();
                 let rd: Word = instruction.rd.into();
                 let imm: Word = instruction.imm;
 
-                opcode | (rd << 7) | (imm << 12)
+                opcode | (rd << Instruction::RD) | (imm << Instruction::U_IMM)
             }
             Opcode::EnvironmentCall => instruction.opcode.into(),
         }
@@ -317,13 +368,13 @@ mod tests {
             TestCase {
                 // I-Type:
                 //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
-                word: 0b0000_0000_0010_0000_0000_0101_0001_0011,
+                word: 0b0000_0010_0000_0101_1000_0101_1001_0011,
                 instruction: Instruction {
                     opcode: Opcode::AddImmediate,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 2,
+                    rd: Reg::a1,
+                    rs1: Reg::a1,
+                    imm: 32,
+                    ..Default::default()
                 },
             },
             TestCase {
@@ -432,5 +483,70 @@ mod tests {
         let want = 2;
         let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got);
+    }
+
+    #[test]
+    fn executes_ecall_instruction_successfully() {
+        // .section .text
+        // _start:
+        //   li a0, 1  # fd = 1 (stdout)
+        //   la a1, helloworld
+        //   li a2, 13
+        //   li a7, 64 # write syscall
+        //   ecall
+        // helloworld:
+        //   .ascii "Hello World!\n"
+
+        let mut machine = Machine::default();
+
+        let instructons = [
+            Instruction {
+                opcode: Opcode::AddImmediate,
+                rd: Reg::a0,
+                imm: 1,
+                ..Default::default()
+            },
+            Instruction {
+                opcode: Opcode::AddUpperImmediateToProgramCounter,
+                rd: Reg::a1,
+                imm: 0,
+                ..Default::default()
+            },
+            Instruction {
+                opcode: Opcode::AddImmediate,
+                rd: Reg::a1,
+                rs1: Reg::a1,
+                imm: 30,
+                ..Default::default()
+            },
+            Instruction {
+                opcode: Opcode::AddImmediate,
+                rd: Reg::a2,
+                imm: 13,
+                ..Default::default()
+            },
+            Instruction {
+                opcode: Opcode::AddImmediate,
+                rd: Reg::a7,
+                imm: 64,
+                ..Default::default()
+            },
+            Instruction {
+                opcode: Opcode::EnvironmentCall,
+                ..Default::default()
+            },
+        ];
+        for (i, instruction) in instructons.into_iter().enumerate() {
+            machine.mem.set(i as Address, instruction.into());
+        }
+        let hello_world: Vec<Word> = "Hello World!\n".chars().map(|c| c as Word).collect();
+        for (i, c) in hello_world.iter().enumerate() {
+            machine.mem.set((i + 32) as Address, *c);
+        }
+
+        assert_err_eq!(machine.run(), Error::OpcodeUnknown(0));
+
+        let got = machine.out;
+        assert_eq!(got, hello_world);
     }
 }
