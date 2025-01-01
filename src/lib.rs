@@ -371,14 +371,17 @@ fn parse(tokens: Vec<Token>) -> Vec<Instruction> {
     let mut token_iter = tokens.into_iter().peekable();
 
     while let Some(Token::Opcode(opcode)) = token_iter.next() {
-        let Some(Token::Register(rd)) = token_iter.next() else {
-            panic!("missing destination register")
-        };
-        let Some(Token::Comma) = token_iter.next() else {
-            panic!("missing comma")
-        };
         match opcode.as_str() {
             "li" => {
+                let Some(reg) = token_iter.next() else {
+                    panic!("missing destination register")
+                };
+                let Token::Register(rd) = reg else {
+                    panic!("expected register, got: {reg:?}")
+                };
+                let Some(Token::Comma) = token_iter.next() else {
+                    panic!("missing comma")
+                };
                 let Some(Token::Integer(imm)) = token_iter.next() else {
                     panic!("missing immediate value")
                 };
@@ -442,6 +445,9 @@ fn tokenize(input: &str) -> Vec<Token> {
 fn lookup_ident(ident: String) -> Token {
     match ident.as_str() {
         "a0" => Token::Register(Reg::a0),
+        "a1" => Token::Register(Reg::a1),
+        "a2" => Token::Register(Reg::a2),
+        "a7" => Token::Register(Reg::a7),
         "li" => Token::Opcode(ident),
         _ => Token::Identifier(ident),
     }
@@ -690,14 +696,54 @@ mod tests {
 
     #[test]
     fn parse_returns_instructions() {
-        let tokens = tokenize("li a0, 1");
-        let want = vec![Instruction {
-            opcode: Opcode::AddImmediate,
-            rd: Reg::a0,
-            imm: 1,
-            ..Default::default()
-        }];
-        let got = parse(tokens);
-        assert_eq!(want, got);
+        struct TestCase {
+            program: String,
+            want: Vec<Instruction>,
+        }
+
+        let cases = vec![
+            TestCase {
+                program: "li a0, 1".into(),
+                want: vec![Instruction {
+                    opcode: Opcode::AddImmediate,
+                    rd: Reg::a0,
+                    imm: 1,
+                    ..Default::default()
+                }],
+            },
+            TestCase {
+                program: "li a1, 32".into(),
+                want: vec![Instruction {
+                    opcode: Opcode::AddImmediate,
+                    rd: Reg::a1,
+                    imm: 32,
+                    ..Default::default()
+                }],
+            },
+            TestCase {
+                program: "li a2, 13".into(),
+                want: vec![Instruction {
+                    opcode: Opcode::AddImmediate,
+                    rd: Reg::a2,
+                    imm: 13,
+                    ..Default::default()
+                }],
+            },
+            TestCase {
+                program: "li a7, 64".into(),
+                want: vec![Instruction {
+                    opcode: Opcode::AddImmediate,
+                    rd: Reg::a7,
+                    imm: 64,
+                    ..Default::default()
+                }],
+            },
+        ];
+
+        for case in cases {
+            let tokens = tokenize(&case.program);
+            let got = parse(tokens);
+            assert_eq!(case.want, got)
+        }
     }
 }
