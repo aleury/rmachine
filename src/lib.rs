@@ -743,7 +743,7 @@ mod tests {
         for case in cases {
             let tokens = tokenize(&case.program);
             let got = parse(tokens);
-            assert_eq!(case.want, got)
+            assert_eq!(case.want, got);
         }
     }
 }
