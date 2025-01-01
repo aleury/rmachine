@@ -91,6 +91,10 @@ impl Machine {
         Self::default()
     }
 
+    fn load_image(&mut self, image: Vec<Word>) {
+        todo!()
+    }
+
     fn next(&mut self) -> Result<Instruction> {
         let word = self.mem.get(self.pc);
         Instruction::try_from(word)
@@ -353,6 +357,10 @@ impl From<Instruction> for Word {
     }
 }
 
+fn assemble(input: &str) -> Vec<Word> {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,5 +556,21 @@ mod tests {
 
         let got = machine.out;
         assert_eq!(got, hello_world);
+    }
+
+    #[test]
+    fn add_immediate_1() {
+        let program = "li a0, 1";
+
+        let image = assemble(program);
+
+        let mut machine = Machine::default();
+        machine.load_image(image);
+
+        assert_err_eq!(machine.run(), Error::OpcodeUnknown(0));
+
+        let want = 1;
+        let got = machine.regs.get(Reg::a0);
+        assert_eq!(want, got, "wrong a0: {}, expected: {}", want, got);
     }
 }
