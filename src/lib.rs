@@ -4,6 +4,7 @@
     clippy::needless_pass_by_value
 )]
 use std::collections::HashMap;
+use std::{iter, str::Chars};
 
 #[derive(Debug, PartialEq)]
 enum Error {
@@ -91,6 +92,12 @@ impl Machine {
         Self::default()
     }
 
+    fn load_image(&mut self, image: Vec<Word>) {
+        for (i, word) in image.into_iter().enumerate() {
+            self.mem.set(i as Address, word);
+        }
+    }
+
     fn next(&mut self) -> Result<Instruction> {
         let word = self.mem.get(self.pc);
         Instruction::try_from(word)
@@ -107,7 +114,7 @@ impl Machine {
 
             println!("pc = {:#?}", self.pc);
             println!("regs = {:#?}", self.regs);
-            println!("instr = {:#?}", instruction);
+            println!("instr = {instruction:#?}");
 
             let opcode = instruction.opcode;
             let rd = instruction.rd;
@@ -353,6 +360,93 @@ impl From<Instruction> for Word {
     }
 }
 
+fn assemble(input: &str) -> Vec<Word> {
+    let tokens = tokenize(input);
+    let instructions = parse(tokens);
+    instructions.into_iter().map(Word::from).collect()
+}
+
+fn parse(tokens: Vec<Token>) -> Vec<Instruction> {
+    let mut instructions = Vec::new();
+    let mut token_iter = tokens.into_iter().peekable();
+
+    while let Some(Token::Opcode(opcode)) = token_iter.next() {
+        let Some(Token::Register(rd)) = token_iter.next() else {
+            panic!("missing destination register")
+        };
+        let Some(Token::Comma) = token_iter.next() else {
+            panic!("missing comma")
+        };
+        match opcode.as_str() {
+            "li" => {
+                let Some(Token::Integer(imm)) = token_iter.next() else {
+                    panic!("missing immediate value")
+                };
+                instructions.push(Instruction {
+                    opcode: Opcode::AddImmediate,
+                    rd,
+                    imm,
+                    ..Default::default()
+                });
+            }
+            _ => panic!("unrecognized opcode: {opcode:#?}"),
+        }
+    }
+
+    instructions
+}
+
+#[derive(Debug, PartialEq)]
+enum Token {
+    Comma,
+    Opcode(String),
+    Register(Reg),
+    Integer(u32),
+    Identifier(String),
+}
+
+fn tokenize(input: &str) -> Vec<Token> {
+    let mut tokens: Vec<Token> = vec![];
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            ch if ch.is_whitespace() => continue,
+            ',' => tokens.push(Token::Comma),
+            '0'..='9' => {
+                let n: u32 = iter::once(ch)
+                    .chain(iter::from_fn(|| {
+                        chars.by_ref().next_if(char::is_ascii_digit)
+                    }))
+                    .collect::<String>()
+                    .parse()
+                    .expect("couldn't parse number");
+
+                tokens.push(Token::Integer(n));
+            }
+            'a'..='z' => {
+                let ident: String = iter::once(ch)
+                    .chain(iter::from_fn(|| {
+                        chars.by_ref().next_if(char::is_ascii_alphanumeric)
+                    }))
+                    .collect();
+                tokens.push(lookup_ident(ident));
+            }
+            _ => panic!("unrecognized char: {ch:#?}"),
+        }
+    }
+
+    tokens
+}
+
+fn lookup_ident(ident: String) -> Token {
+    match ident.as_str() {
+        "a0" => Token::Register(Reg::a0),
+        "li" => Token::Opcode(ident),
+        _ => Token::Identifier(ident),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,5 +642,62 @@ mod tests {
 
         let got = machine.out;
         assert_eq!(got, hello_world);
+    }
+
+    #[test]
+    fn add_immediate_1() {
+        let image = assemble("li a0, 1");
+
+        let mut machine = Machine::default();
+        machine.load_image(image);
+
+        assert_err_eq!(machine.run(), Error::OpcodeUnknown(0));
+
+        let want = 1;
+        let got = machine.regs.get(Reg::a0);
+        assert_eq!(want, got, "wrong a0: {want}, expected: {got}");
+    }
+
+    #[test]
+    fn test_assemble() {
+        let program = "li a0, 1";
+
+        let instruction = Instruction {
+            opcode: Opcode::AddImmediate,
+            rd: Reg::a0,
+            imm: 1,
+            ..Default::default()
+        };
+        let want: Vec<Word> = vec![instruction.into()];
+
+        let got = assemble(program);
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn tokenize_returns_tokens() {
+        let want = vec![
+            Token::Opcode("li".into()),
+            Token::Register(Reg::a0),
+            Token::Comma,
+            Token::Integer(1),
+        ];
+
+        let got = tokenize("li a0, 1");
+
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn parse_returns_instructions() {
+        let tokens = tokenize("li a0, 1");
+        let want = vec![Instruction {
+            opcode: Opcode::AddImmediate,
+            rd: Reg::a0,
+            imm: 1,
+            ..Default::default()
+        }];
+        let got = parse(tokens);
+        assert_eq!(want, got);
     }
 }
