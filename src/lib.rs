@@ -488,7 +488,7 @@ fn tokenize(input: &str) -> Vec<Token> {
         match token {
             Token::Eof => break,
             Token::Illegal(char) => {
-                panic!("illegal character: {char:#?}");
+                panic!("illegal token: {char:#?}");
             }
             _ => tokens.push(token),
         }
