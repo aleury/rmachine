@@ -507,7 +507,7 @@ fn lookup_ident(ident: String) -> Token {
         "a1" => Token::Register(Reg::a1),
         "a2" => Token::Register(Reg::a2),
         "a7" => Token::Register(Reg::a7),
-        "li" | "ecall" => Token::Opcode(ident),
+        "li" | "la" | "ecall" => Token::Opcode(ident),
         _ => Token::Identifier(ident),
     }
 }
@@ -780,6 +780,15 @@ mod tests {
                     Token::Register(Reg::a7),
                     Token::Comma,
                     Token::Integer("64".into()),
+                ],
+            },
+            TestCase {
+                program: "la a1, helloworld".into(),
+                want: vec![
+                    Token::Opcode("la".into()),
+                    Token::Register(Reg::a1),
+                    Token::Comma,
+                    Token::Identifier("helloworld".into()),
                 ],
             },
             TestCase {
