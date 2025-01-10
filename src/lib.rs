@@ -393,6 +393,10 @@ fn parse(tokens: Vec<Token>) -> Vec<Instruction> {
                     ..Default::default()
                 });
             }
+            "ecall" => instructions.push(Instruction {
+                opcode: Opcode::EnvironmentCall,
+                ..Default::default()
+            }),
             _ => panic!("unrecognized opcode: {opcode:#?}"),
         }
     }
@@ -503,7 +507,7 @@ fn lookup_ident(ident: String) -> Token {
         "a1" => Token::Register(Reg::a1),
         "a2" => Token::Register(Reg::a2),
         "a7" => Token::Register(Reg::a7),
-        "li" => Token::Opcode(ident),
+        "li" | "ecall" => Token::Opcode(ident),
         _ => Token::Identifier(ident),
     }
 }
@@ -737,16 +741,57 @@ mod tests {
 
     #[test]
     fn tokenize_returns_tokens() {
-        let want = vec![
-            Token::Opcode("li".into()),
-            Token::Register(Reg::a0),
-            Token::Comma,
-            Token::Integer("1".into()),
+        struct TestCase {
+            program: String,
+            want: Vec<Token>,
+        }
+        let cases = [
+            TestCase {
+                program: "li a0, 1".into(),
+                want: vec![
+                    Token::Opcode("li".into()),
+                    Token::Register(Reg::a0),
+                    Token::Comma,
+                    Token::Integer("1".into()),
+                ],
+            },
+            TestCase {
+                program: "li a1, 32".into(),
+                want: vec![
+                    Token::Opcode("li".into()),
+                    Token::Register(Reg::a1),
+                    Token::Comma,
+                    Token::Integer("32".into()),
+                ],
+            },
+            TestCase {
+                program: "li a2, 13".into(),
+                want: vec![
+                    Token::Opcode("li".into()),
+                    Token::Register(Reg::a2),
+                    Token::Comma,
+                    Token::Integer("13".into()),
+                ],
+            },
+            TestCase {
+                program: "li a7, 64".into(),
+                want: vec![
+                    Token::Opcode("li".into()),
+                    Token::Register(Reg::a7),
+                    Token::Comma,
+                    Token::Integer("64".into()),
+                ],
+            },
+            TestCase {
+                program: "ecall".into(),
+                want: vec![Token::Opcode("ecall".into())],
+            },
         ];
 
-        let got = tokenize("li a0, 1");
-
-        assert_eq!(want, got);
+        for case in cases {
+            let got = tokenize(&case.program);
+            assert_eq!(case.want, got);
+        }
     }
 
     #[test]
@@ -790,6 +835,13 @@ mod tests {
                     opcode: Opcode::AddImmediate,
                     rd: Reg::a7,
                     imm: 64,
+                    ..Default::default()
+                }],
+            },
+            TestCase {
+                program: "ecall".into(),
+                want: vec![Instruction {
+                    opcode: Opcode::EnvironmentCall,
                     ..Default::default()
                 }],
             },
