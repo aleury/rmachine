@@ -385,6 +385,7 @@ fn parse(tokens: Vec<Token>) -> Vec<Instruction> {
                 let Some(Token::Integer(imm)) = token_iter.next() else {
                     panic!("missing immediate value")
                 };
+                let imm: u32 = imm.parse().expect("parse immediate value");
                 instructions.push(Instruction {
                     opcode: Opcode::AddImmediate,
                     rd,
@@ -401,41 +402,95 @@ fn parse(tokens: Vec<Token>) -> Vec<Instruction> {
 
 #[derive(Debug, PartialEq)]
 enum Token {
+    Eof,
+    Illegal(String),
     Comma,
     Opcode(String),
     Register(Reg),
-    Integer(u32),
+    Integer(String),
     Identifier(String),
+}
+
+struct Lexer {
+    input: Vec<char>,
+    pos: usize,
+    next_pos: usize,
+    char: char,
+}
+
+impl Lexer {
+    fn new(input: &str) -> Self {
+        let input: Vec<char> = input.chars().collect();
+        let char = input[0];
+        Self {
+            input,
+            pos: 0,
+            next_pos: 1,
+            char,
+        }
+    }
+
+    fn peek_char(&self) -> char {
+        if self.next_pos >= self.input.len() {
+            '\0'
+        } else {
+            self.input[self.next_pos]
+        }
+    }
+
+    fn read_char(&mut self) {
+        self.char = self.peek_char();
+        self.pos = self.next_pos;
+        self.next_pos += 1;
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.char.is_ascii_whitespace() {
+            self.read_char();
+        }
+    }
+
+    fn next_token(&mut self) -> Token {
+        self.skip_whitespace();
+        match self.char {
+            ',' => {
+                self.read_char();
+                Token::Comma
+            }
+            'a'..='z' => {
+                let start = self.pos;
+                while self.char.is_ascii_alphanumeric() {
+                    self.read_char();
+                }
+                let ident: String = self.input[start..self.pos].iter().collect();
+                lookup_ident(ident)
+            }
+            '0'..='9' => {
+                let start = self.pos;
+                while self.char.is_ascii_digit() {
+                    self.read_char();
+                }
+                let int = self.input[start..self.pos].iter().collect::<String>();
+                Token::Integer(int)
+            }
+            '\0' => Token::Eof,
+            _ => Token::Illegal(self.char.to_string()),
+        }
+    }
 }
 
 fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens: Vec<Token> = vec![];
-    let mut chars = input.chars().peekable();
+    let mut lexer = Lexer::new(input);
 
-    while let Some(ch) = chars.next() {
-        match ch {
-            ch if ch.is_whitespace() => continue,
-            ',' => tokens.push(Token::Comma),
-            '0'..='9' => {
-                let n: u32 = iter::once(ch)
-                    .chain(iter::from_fn(|| {
-                        chars.by_ref().next_if(char::is_ascii_digit)
-                    }))
-                    .collect::<String>()
-                    .parse()
-                    .expect("couldn't parse number");
-
-                tokens.push(Token::Integer(n));
+    loop {
+        let token = lexer.next_token();
+        match token {
+            Token::Eof => break,
+            Token::Illegal(char) => {
+                panic!("illegal character: {char:#?}");
             }
-            'a'..='z' => {
-                let ident: String = iter::once(ch)
-                    .chain(iter::from_fn(|| {
-                        chars.by_ref().next_if(char::is_ascii_alphanumeric)
-                    }))
-                    .collect();
-                tokens.push(lookup_ident(ident));
-            }
-            _ => panic!("unrecognized char: {ch:#?}"),
+            _ => tokens.push(token),
         }
     }
 
@@ -686,7 +741,7 @@ mod tests {
             Token::Opcode("li".into()),
             Token::Register(Reg::a0),
             Token::Comma,
-            Token::Integer(1),
+            Token::Integer("1".into()),
         ];
 
         let got = tokenize("li a0, 1");
