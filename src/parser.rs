@@ -109,7 +109,7 @@ mod tests {
     use crate::lexer;
 
     #[test]
-    fn parse_returns_instructions() {
+    fn parse_returns_instruction_statements() {
         struct TestCase {
             program: String,
             want: Vec<InstructionStatement>,
