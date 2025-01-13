@@ -383,23 +383,13 @@ pub fn assemble(input: &str) -> anyhow::Result<Vec<Word>> {
 
     for instr_stmt in instr_statements {
         match instr_stmt.name {
-            InstructionName::addi => {
+            InstructionName::li => {
                 let instruction = Instruction {
                     opcode: Opcode::addi,
-                    rd: Reg::zero,
+                    rd: instr_stmt.rd.into(),
                     rs1: Reg::zero,
                     rs2: Reg::zero,
-                    imm: 0,
-                };
-                instructions.push(instruction);
-            }
-            InstructionName::auipc => {
-                let instruction = Instruction {
-                    opcode: Opcode::auipc,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
+                    imm: instr_stmt.imm,
                 };
                 instructions.push(instruction);
             }
@@ -413,44 +403,7 @@ pub fn assemble(input: &str) -> anyhow::Result<Vec<Word>> {
                 };
                 instructions.push(instruction);
             }
-            InstructionName::la => {
-                let auipc = Instruction {
-                    opcode: Opcode::auipc,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                };
-                let addi = Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                };
-                instructions.push(auipc);
-                instructions.push(addi);
-            }
-            InstructionName::li => {
-                let instruction = Instruction {
-                    opcode: Opcode::addi,
-                    rd: instr_stmt.rd.into(),
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: instr_stmt.imm,
-                };
-                instructions.push(instruction);
-            }
-            InstructionName::lui => {
-                let instruction = Instruction {
-                    opcode: Opcode::lui,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                };
-                instructions.push(instruction);
-            }
+            _ => todo!(),
         }
     }
 
@@ -682,18 +635,68 @@ mod tests {
 
     #[test]
     fn test_assemble() {
-        let program = "li a0, 1";
+        struct TestCase {
+            program: String,
+            want: Instruction,
+        }
 
-        let instruction = Instruction {
-            opcode: Opcode::addi,
-            rd: Reg::a0,
-            rs1: Reg::zero,
-            rs2: Reg::zero,
-            imm: 1,
-        };
-        let want: Vec<Word> = vec![instruction.into()];
+        let cases = [
+            TestCase {
+                program: "li a0, 1".into(),
+                want: Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 1,
+                },
+            },
+            TestCase {
+                program: "li a1, 2".into(),
+                want: Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::a1,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 2,
+                },
+            },
+            TestCase {
+                program: "li a2, 42".into(),
+                want: Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::a2,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 42,
+                },
+            },
+            TestCase {
+                program: "li a7, 64".into(),
+                want: Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::a7,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 64,
+                },
+            },
+            TestCase {
+                program: "ecall".into(),
+                want: Instruction {
+                    opcode: Opcode::ecall,
+                    rd: Reg::zero,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 0,
+                },
+            },
+        ];
 
-        let got = assemble(program).unwrap();
-        assert_eq!(want, got);
+        for case in cases {
+            let want: Vec<Word> = vec![case.want.into()];
+            let got = assemble(&case.program).unwrap();
+            assert_eq!(want, got);
+        }
     }
 }
