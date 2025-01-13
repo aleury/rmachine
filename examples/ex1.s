@@ -8,9 +8,9 @@ _start:
   li a7, 64 # write syscall
   ecall
 
-  li a0, 0 # status = 0
-  li a7, 93 # exit syscall
-  ecall
+  #li a0, 0 # status = 0
+  #li a7, 93 # exit syscall
+  #ecall
 
 helloworld:
   .ascii "Hello World!\n"
