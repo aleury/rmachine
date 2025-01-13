@@ -83,9 +83,9 @@ pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<InstructionStatement>> {
                 InstructionStatement {
                     name: instr_name,
                     rd: rd.try_into()?,
-                    imm,
                     rs1: RegisterName::zero,
                     rs2: RegisterName::zero,
+                    imm,
                 }
             }
             InstructionName::ecall => InstructionStatement {
