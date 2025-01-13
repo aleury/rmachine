@@ -59,7 +59,7 @@ impl Lexer {
                     self.read_char();
                 }
                 let ident: String = self.input[start..self.pos].iter().collect();
-                lookup_ident(ident)
+                Token::Identifier(ident)
             }
             '0'..='9' => {
                 let start = self.pos;
@@ -76,12 +76,6 @@ impl Lexer {
             '\0' => Token::Eof,
             _ => Token::Illegal(self.char.to_string()),
         }
-    }
-}
-
-fn lookup_ident(ident: String) -> Token {
-    match ident.as_str() {
-        _ => Token::Identifier(ident),
     }
 }
 
