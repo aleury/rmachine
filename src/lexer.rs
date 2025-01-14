@@ -2,6 +2,7 @@
 pub enum Token {
     Eof,
     Illegal(String),
+    Colon,
     Comma,
     Integer(u32),
     Identifier(String),
@@ -49,13 +50,17 @@ impl Lexer {
     fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         match self.char {
+            ':' => {
+                self.read_char();
+                Token::Colon
+            }
             ',' => {
                 self.read_char();
                 Token::Comma
             }
-            'a'..='z' => {
+            'a'..='z' | '_' => {
                 let start = self.pos;
-                while self.char.is_ascii_alphanumeric() {
+                while self.char.is_ascii_alphanumeric() || self.char == '_' {
                     self.read_char();
                 }
                 let ident: String = self.input[start..self.pos].iter().collect();
@@ -108,6 +113,10 @@ mod tests {
             want: Vec<Token>,
         }
         let cases = [
+            TestCase {
+                program: "_start:".to_string(),
+                want: vec![Token::Identifier("_start".into()), Token::Colon],
+            },
             TestCase {
                 program: "li a0, 1".into(),
                 want: vec![
