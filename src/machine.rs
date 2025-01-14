@@ -378,7 +378,7 @@ impl From<RegisterName> for Reg {
     }
 }
 
-fn assemble_instruction(stmt: Statement) -> anyhow::Result<Vec<Instruction>> {
+fn assemble_instruction_statement(stmt: Statement) -> Vec<Instruction> {
     let Statement::Instruction {
         name,
         rd,
@@ -388,20 +388,20 @@ fn assemble_instruction(stmt: Statement) -> anyhow::Result<Vec<Instruction>> {
     } = stmt;
 
     match name {
-        InstructionName::li => Ok(vec![Instruction {
+        InstructionName::li => vec![Instruction {
             opcode: Opcode::addi,
             rd: rd.into(),
             rs1: Reg::zero,
             rs2: Reg::zero,
             imm,
-        }]),
-        InstructionName::ecall => Ok(vec![Instruction {
+        }],
+        InstructionName::ecall => vec![Instruction {
             opcode: Opcode::ecall,
             rd: Reg::zero,
             rs1: Reg::zero,
             rs2: Reg::zero,
             imm: 0,
-        }]),
+        }],
         _ => todo!(),
     }
 }
@@ -414,7 +414,7 @@ pub fn assemble(input: &str) -> anyhow::Result<Vec<Word>> {
     for stmt in statements {
         match stmt {
             Statement::Instruction { .. } => {
-                let mut instruction = assemble_instruction(stmt)?;
+                let mut instruction = assemble_instruction_statement(stmt);
                 instructions.append(&mut instruction);
             }
         }
