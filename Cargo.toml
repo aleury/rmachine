@@ -6,6 +6,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
+anyhow = "1.0.95"
 
 [dev-dependencies]
 claims = "0.7.1"
