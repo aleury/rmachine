@@ -39,12 +39,14 @@ impl TryFrom<String> for RegisterName {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct InstructionStatement {
-    pub name: InstructionName,
-    pub rd: RegisterName,
-    pub rs1: RegisterName,
-    pub rs2: RegisterName,
-    pub imm: u32,
+pub enum Statement {
+    Instruction {
+        name: InstructionName,
+        rd: RegisterName,
+        rs1: RegisterName,
+        rs2: RegisterName,
+        imm: u32,
+    },
 }
 
 impl TryFrom<String> for InstructionName {
@@ -63,7 +65,7 @@ impl TryFrom<String> for InstructionName {
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<InstructionStatement>> {
+pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<Statement>> {
     let mut instructions = Vec::new();
     let mut token_iter = tokens.into_iter().peekable();
 
@@ -80,7 +82,7 @@ pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<InstructionStatement>> {
                 let Some(Token::Integer(imm)) = token_iter.next() else {
                     return Err(anyhow!("syntax error: missing immediate value operand"));
                 };
-                InstructionStatement {
+                Statement::Instruction {
                     name: instr_name,
                     rd: rd.try_into()?,
                     rs1: RegisterName::zero,
@@ -88,7 +90,7 @@ pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<InstructionStatement>> {
                     imm,
                 }
             }
-            InstructionName::ecall => InstructionStatement {
+            InstructionName::ecall => Statement::Instruction {
                 name: instr_name,
                 rd: RegisterName::zero,
                 rs1: RegisterName::zero,
@@ -112,13 +114,13 @@ mod tests {
     fn parse_returns_instruction_statements() {
         struct TestCase {
             program: String,
-            want: Vec<InstructionStatement>,
+            want: Vec<Statement>,
         }
 
         let cases = vec![
             TestCase {
                 program: "li a0, 1".into(),
-                want: vec![InstructionStatement {
+                want: vec![Statement::Instruction {
                     name: InstructionName::li,
                     rd: RegisterName::a0,
                     rs1: RegisterName::zero,
@@ -128,7 +130,7 @@ mod tests {
             },
             TestCase {
                 program: "li a1, 32".into(),
-                want: vec![InstructionStatement {
+                want: vec![Statement::Instruction {
                     name: InstructionName::li,
                     rd: RegisterName::a1,
                     rs1: RegisterName::zero,
@@ -138,7 +140,7 @@ mod tests {
             },
             TestCase {
                 program: "li a2, 13".into(),
-                want: vec![InstructionStatement {
+                want: vec![Statement::Instruction {
                     name: InstructionName::li,
                     rd: RegisterName::a2,
                     rs1: RegisterName::zero,
@@ -148,7 +150,7 @@ mod tests {
             },
             TestCase {
                 program: "li a7, 64".into(),
-                want: vec![InstructionStatement {
+                want: vec![Statement::Instruction {
                     name: InstructionName::li,
                     rd: RegisterName::a7,
                     rs1: RegisterName::zero,
@@ -158,7 +160,7 @@ mod tests {
             },
             TestCase {
                 program: "ecall".into(),
-                want: vec![InstructionStatement {
+                want: vec![Statement::Instruction {
                     name: InstructionName::ecall,
                     rd: RegisterName::zero,
                     rs1: RegisterName::zero,

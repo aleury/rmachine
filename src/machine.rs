@@ -1,6 +1,8 @@
+use anyhow::anyhow;
+
 use crate::{
     lexer,
-    parser::{self, InstructionName, RegisterName},
+    parser::{self, InstructionName, RegisterName, Statement},
 };
 
 use std::collections::HashMap;
@@ -376,34 +378,45 @@ impl From<RegisterName> for Reg {
     }
 }
 
+fn assemble_instruction(stmt: Statement) -> anyhow::Result<Vec<Instruction>> {
+    let Statement::Instruction {
+        name,
+        rd,
+        rs1,
+        rs2,
+        imm,
+    } = stmt;
+
+    match name {
+        InstructionName::li => Ok(vec![Instruction {
+            opcode: Opcode::addi,
+            rd: rd.into(),
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm,
+        }]),
+        InstructionName::ecall => Ok(vec![Instruction {
+            opcode: Opcode::ecall,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 0,
+        }]),
+        _ => todo!(),
+    }
+}
+
 pub fn assemble(input: &str) -> anyhow::Result<Vec<Word>> {
     let tokens = lexer::tokenize(input);
-    let instr_statements = parser::parse(tokens)?;
+    let statements = parser::parse(tokens)?;
     let mut instructions: Vec<Instruction> = Vec::new();
 
-    for instr_stmt in instr_statements {
-        match instr_stmt.name {
-            InstructionName::li => {
-                let instruction = Instruction {
-                    opcode: Opcode::addi,
-                    rd: instr_stmt.rd.into(),
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: instr_stmt.imm,
-                };
-                instructions.push(instruction);
+    for stmt in statements {
+        match stmt {
+            Statement::Instruction { .. } => {
+                let mut instruction = assemble_instruction(stmt)?;
+                instructions.append(&mut instruction);
             }
-            InstructionName::ecall => {
-                let instruction = Instruction {
-                    opcode: Opcode::ecall,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                };
-                instructions.push(instruction);
-            }
-            _ => todo!(),
         }
     }
 
