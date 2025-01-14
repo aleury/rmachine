@@ -379,13 +379,7 @@ impl From<RegisterName> for Reg {
 }
 
 fn assemble_instruction_statement(stmt: Statement) -> Vec<Instruction> {
-    let Statement::Instruction {
-        name,
-        rd,
-        rs1,
-        rs2,
-        imm,
-    } = stmt;
+    let Statement::Instruction { name, rd, imm, .. } = stmt;
 
     match name {
         InstructionName::li => vec![Instruction {
