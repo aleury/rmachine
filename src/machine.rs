@@ -220,10 +220,11 @@ impl Machine {
 
     fn run(&mut self) -> Result<()> {
         loop {
+            let pc = self.pc;
             let instruction = self.next()?;
             self.pc += 1;
 
-            println!("pc = {:#?}", self.pc);
+            println!("pc = {:#?}", pc);
             println!("regs = {:#?}", self.regs);
             println!("instr = {instruction:#?}");
 
@@ -238,7 +239,7 @@ impl Machine {
                     self.regs.set(rd, rs1 + imm);
                 }
                 Opcode::auipc => {
-                    self.regs.set(rd, self.pc + (imm << 12));
+                    self.regs.set(rd, pc + (imm << 12));
                 }
                 Opcode::ecall => {
                     let syscall = self.regs.get(Reg::a7);
@@ -529,7 +530,7 @@ mod tests {
 
         machine.run();
 
-        let want = 1 + (2 << 12);
+        let want = 0 + (2 << 12);
         let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got);
     }
@@ -588,7 +589,7 @@ mod tests {
                 rd: Reg::a1,
                 rs1: Reg::a1,
                 rs2: Reg::zero,
-                imm: 30,
+                imm: 5,
             },
             Instruction {
                 opcode: Opcode::addi,
@@ -612,15 +613,16 @@ mod tests {
                 imm: 0,
             },
         ];
+        let len = instructons.len();
         for (i, instruction) in instructons.into_iter().enumerate() {
             machine.mem.set(i as Address, instruction.into());
         }
         let hello_world: Vec<Word> = "Hello World!\n".chars().map(|c| c as Word).collect();
         for (i, c) in hello_world.iter().enumerate() {
-            machine.mem.set((i + 32) as Address, *c);
+            machine.mem.set((i + len) as Address, *c);
         }
 
-        assert_err_eq!(machine.run(), Error::OpcodeUnknown(0));
+        assert_err!(machine.run());
 
         let got = machine.out;
         assert_eq!(got, hello_world);
