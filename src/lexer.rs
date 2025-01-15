@@ -4,6 +4,7 @@ pub enum Token {
     Illegal(String),
     Colon,
     Comma,
+    Dot,
     Integer(u32),
     Identifier(String),
 }
@@ -57,6 +58,10 @@ impl Lexer {
             ',' => {
                 self.read_char();
                 Token::Comma
+            }
+            '.' => {
+                self.read_char();
+                Token::Dot
             }
             'a'..='z' | '_' => {
                 let start = self.pos;
@@ -113,6 +118,23 @@ mod tests {
             want: Vec<Token>,
         }
         let cases = [
+            TestCase {
+                program: ".global _start".to_string(),
+                want: vec![
+                    Token::Dot,
+                    Token::Identifier("global".into()),
+                    Token::Identifier("_start".into()),
+                ],
+            },
+            TestCase {
+                program: ".section .text".to_string(),
+                want: vec![
+                    Token::Dot,
+                    Token::Identifier("section".into()),
+                    Token::Dot,
+                    Token::Identifier("text".into()),
+                ],
+            },
             TestCase {
                 program: "_start:".to_string(),
                 want: vec![Token::Identifier("_start".into()), Token::Colon],
