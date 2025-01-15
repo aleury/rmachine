@@ -85,14 +85,11 @@ impl Lexer {
                 }
             }
             '"' => {
-                println!("{:#?}", self.char);
                 let start = self.pos;
                 self.read_char(); // consume the opening quote
                 while self.char != '"' {
-                    println!("{:#?}", self.char);
                     self.read_char();
                 }
-                println!("{:#?}", self.char);
                 self.read_char(); // consume the closing quote
                 let lexeme = self.input[start..self.pos].iter().collect::<String>();
                 Token::String(lexeme)
