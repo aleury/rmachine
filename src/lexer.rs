@@ -7,6 +7,7 @@ pub enum Token {
     Dot,
     Integer(u32),
     Identifier(String),
+    String(String),
 }
 
 struct Lexer {
@@ -83,6 +84,21 @@ impl Lexer {
                     Token::Illegal(lexeme)
                 }
             }
+            '"' => {
+                println!("{:#?}", self.char);
+                let start = self.pos;
+                self.read_char(); // consume the opening quote
+                while self.char != '"' {
+                    println!("{:#?}", self.char);
+                    self.read_char();
+                }
+                println!("{:#?}", self.char);
+                self.read_char(); // consume the closing quote
+                let stuff: Vec<char> = self.input[start..self.pos].iter().cloned().collect();
+                println!("{:#?}", stuff);
+                let lexeme = self.input[start..self.pos].iter().collect::<String>();
+                Token::String(lexeme)
+            }
             '\0' => Token::Eof,
             _ => Token::Illegal(self.char.to_string()),
         }
@@ -118,6 +134,14 @@ mod tests {
             want: Vec<Token>,
         }
         let cases = [
+            TestCase {
+                program: ".ascii \"Hello World!\n\"".to_string(),
+                want: vec![
+                    Token::Dot,
+                    Token::Identifier("ascii".into()),
+                    Token::String("\"Hello World!\n\"".into()),
+                ],
+            },
             TestCase {
                 program: ".global _start".to_string(),
                 want: vec![
