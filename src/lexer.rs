@@ -94,8 +94,6 @@ impl Lexer {
                 }
                 println!("{:#?}", self.char);
                 self.read_char(); // consume the closing quote
-                let stuff: Vec<char> = self.input[start..self.pos].iter().cloned().collect();
-                println!("{:#?}", stuff);
                 let lexeme = self.input[start..self.pos].iter().collect::<String>();
                 Token::String(lexeme)
             }
