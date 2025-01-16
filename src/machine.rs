@@ -224,7 +224,7 @@ impl Machine {
             let instruction = self.next()?;
             self.pc += 1;
 
-            println!("pc = {:#?}", pc);
+            println!("pc = {pc:#?}");
             println!("regs = {:#?}", self.regs);
             println!("instr = {instruction:#?}");
 
@@ -530,7 +530,7 @@ mod tests {
 
         machine.run();
 
-        let want = 0 + (2 << 12);
+        let want = 2 << 12;
         let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got);
     }
