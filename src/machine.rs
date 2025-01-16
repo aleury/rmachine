@@ -11,14 +11,6 @@ pub type Word = u32;
 
 pub type Address = u32;
 
-#[derive(Debug, PartialEq)]
-enum Error {
-    OpcodeUnknown(u32),
-    RegisterUnknown(u32),
-}
-
-type Result<T> = std::result::Result<T, Error>;
-
 #[allow(non_camel_case_types)]
 #[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
 enum Opcode {
@@ -51,9 +43,9 @@ impl Instruction {
 }
 
 impl TryFrom<Word> for Instruction {
-    type Error = Error;
+    type Error = anyhow::Error;
 
-    fn try_from(word: Word) -> Result<Self> {
+    fn try_from(word: Word) -> anyhow::Result<Self> {
         let opcode = (word & Instruction::OP_MASK).try_into()?;
         match opcode {
             Opcode::addi => {
@@ -209,7 +201,7 @@ impl Machine {
         }
     }
 
-    fn next(&mut self) -> Result<Instruction> {
+    fn next(&mut self) -> anyhow::Result<Instruction> {
         let word = self.mem.get(self.pc);
         Instruction::try_from(word)
     }
@@ -218,7 +210,7 @@ impl Machine {
         self.out.push(data);
     }
 
-    fn run(&mut self) -> Result<()> {
+    fn run(&mut self) -> anyhow::Result<()> {
         loop {
             let pc = self.pc;
             let instruction = self.next()?;
@@ -271,15 +263,15 @@ impl Machine {
 }
 
 impl TryFrom<Word> for Opcode {
-    type Error = Error;
+    type Error = anyhow::Error;
 
-    fn try_from(word: Word) -> Result<Self> {
+    fn try_from(word: Word) -> anyhow::Result<Self> {
         match word {
             0b001_0011 => Ok(Opcode::addi),
             0b001_0111 => Ok(Opcode::auipc),
             0b111_0011 => Ok(Opcode::ecall),
             0b011_0111 => Ok(Opcode::lui),
-            _ => Err(Error::OpcodeUnknown(word)),
+            _ => Err(anyhow!("unknown opcode: {word:#?}")),
         }
     }
 }
@@ -340,16 +332,16 @@ enum Reg {
 }
 
 impl TryFrom<Word> for Reg {
-    type Error = Error;
+    type Error = anyhow::Error;
 
-    fn try_from(word: Word) -> Result<Self> {
+    fn try_from(word: Word) -> anyhow::Result<Self> {
         match word {
             0b00000 => Ok(Reg::zero),
             0b01010 => Ok(Reg::a0),
             0b01011 => Ok(Reg::a1),
             0b01100 => Ok(Reg::a2),
             0b10001 => Ok(Reg::a7),
-            _ => Err(Error::RegisterUnknown(word)),
+            _ => Err(anyhow!("unknown register: {word:#?}")),
         }
     }
 }
@@ -635,7 +627,7 @@ mod tests {
         let mut machine = Machine::default();
         machine.load_image(image);
 
-        assert_err_eq!(machine.run(), Error::OpcodeUnknown(0));
+        assert_err!(machine.run());
 
         let want = 1;
         let got = machine.regs.get(Reg::a0);
