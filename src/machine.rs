@@ -1,11 +1,11 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, bail, Result};
 
 use crate::{
     lexer,
     parser::{self, InstructionName, RegisterName, Statement},
 };
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 pub type Word = u32;
 
@@ -13,20 +13,37 @@ pub type Address = u32;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
-enum Opcode {
+pub enum Opcode {
+    unimp,
     addi,
     auipc,
     lui,
     ecall,
 }
 
+impl Display for Opcode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:6}",
+            match self {
+                Opcode::unimp => "unimp",
+                Opcode::addi => "addi",
+                Opcode::auipc => "auipc",
+                Opcode::lui => "lui",
+                Opcode::ecall => "ecall",
+            }
+        )
+    }
+}
+
 #[derive(Debug, PartialEq)]
-struct Instruction {
-    opcode: Opcode,
-    rd: Reg,
-    rs1: Reg,
-    rs2: Reg,
-    imm: u32,
+pub struct Instruction {
+    pub opcode: Opcode,
+    pub rd: Reg,
+    pub rs1: Reg,
+    pub rs2: Reg,
+    pub imm: u32,
 }
 
 impl Instruction {
@@ -42,12 +59,33 @@ impl Instruction {
     const R_MASK: u32 = 0b0001_1111;
 }
 
+impl Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.opcode {
+            Opcode::unimp | Opcode::ecall => write!(f, "{}", self.opcode),
+            Opcode::auipc => write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm),
+            _ => write!(
+                f,
+                "{} {}, {}, {}, 0x{:02x}",
+                self.opcode, self.rd, self.rs1, self.rs2, self.imm
+            ),
+        }
+    }
+}
+
 impl TryFrom<Word> for Instruction {
     type Error = anyhow::Error;
 
-    fn try_from(word: Word) -> anyhow::Result<Self> {
+    fn try_from(word: Word) -> Result<Self> {
         let opcode = (word & Instruction::OP_MASK).try_into()?;
         match opcode {
+            Opcode::unimp | Opcode::ecall => Ok(Instruction {
+                opcode,
+                rd: Reg::zero,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm: 0,
+            }),
             Opcode::addi => {
                 let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
                 let rs1 = ((word >> Instruction::I_RS1) & Instruction::R_MASK).try_into()?;
@@ -71,13 +109,6 @@ impl TryFrom<Word> for Instruction {
                     imm,
                 })
             }
-            Opcode::ecall => Ok(Instruction {
-                opcode,
-                rd: Reg::zero,
-                rs1: Reg::zero,
-                rs2: Reg::zero,
-                imm: 0,
-            }),
             Opcode::lui => {
                 let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
                 let imm = word >> Instruction::U_IMM;
@@ -96,6 +127,7 @@ impl TryFrom<Word> for Instruction {
 impl From<Instruction> for Word {
     fn from(instruction: Instruction) -> Self {
         match instruction.opcode {
+            Opcode::unimp => 0,
             Opcode::addi => {
                 let opcode: Word = instruction.opcode.into();
                 let rd: Word = instruction.rd.into();
@@ -122,12 +154,12 @@ impl From<Instruction> for Word {
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
-struct Memory {
+pub struct Memory {
     inner: HashMap<Address, Word>,
 }
 
 impl Memory {
-    fn get(&self, addr: Address) -> Word {
+    pub fn get(&self, addr: Address) -> Word {
         *self.inner.get(&addr).unwrap_or(&Word::default())
     }
 
@@ -153,12 +185,12 @@ impl<const N: usize> From<[(Address, Word); N]> for Memory {
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
-struct Registers {
+pub struct Registers {
     inner: HashMap<Reg, Word>,
 }
 
 impl Registers {
-    fn get(&self, reg: Reg) -> Word {
+    pub fn get(&self, reg: Reg) -> Word {
         *self.inner.get(&reg).unwrap_or(&Word::default())
     }
 
@@ -181,9 +213,9 @@ impl<const N: usize> From<[(Reg, Word); N]> for Registers {
 
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Machine {
-    pc: Word,
-    mem: Memory,
-    regs: Registers,
+    pub pc: Word,
+    pub mem: Memory,
+    pub regs: Registers,
     out: Vec<Word>,
 }
 
@@ -191,17 +223,18 @@ impl Machine {
     const SYSCALL_WRITE: u32 = 64;
     const FD_STDOUT: u32 = 1;
 
-    fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self::default()
     }
 
-    fn load_image(&mut self, image: Vec<Word>) {
+    pub fn load_image(&mut self, image: Vec<Word>) {
         for (i, word) in image.into_iter().enumerate() {
             self.mem.set(i as Address, word);
         }
     }
 
-    fn next(&mut self) -> anyhow::Result<Instruction> {
+    fn next(&mut self) -> Result<Instruction> {
         let word = self.mem.get(self.pc);
         Instruction::try_from(word)
     }
@@ -210,52 +243,67 @@ impl Machine {
         self.out.push(data);
     }
 
-    fn run(&mut self) -> anyhow::Result<()> {
+    /// Runs the machine until the next breakpoint or error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an illegal instruction is encountered, or if an
+    /// unknown file descriptor is specified for a syscall.
+    pub fn run(&mut self) -> Result<()> {
         loop {
-            let pc = self.pc;
-            let instruction = self.next()?;
-            self.pc += 1;
+            self.execute_next()?;
+        }
+    }
 
-            println!("pc = {pc:#?}");
-            println!("regs = {:#?}", self.regs);
-            println!("instr = {instruction:#?}");
+    /// Executes the next instruction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an illegal instruction is encountered, or if an
+    /// unknown file descriptor is specified for a syscall.
+    pub fn execute_next(&mut self) -> Result<()> {
+        let pc = self.pc;
+        let instruction = self.next()?;
+        self.pc += 1;
 
-            let opcode = instruction.opcode;
-            let rd = instruction.rd;
-            let rs1 = self.regs.get(instruction.rs1);
-            let _rs2 = self.regs.get(instruction.rs2);
-            let imm = instruction.imm;
+        let opcode = instruction.opcode;
+        let rd = instruction.rd;
+        let rs1 = self.regs.get(instruction.rs1);
+        let _rs2 = self.regs.get(instruction.rs2);
+        let imm = instruction.imm;
 
-            match opcode {
-                Opcode::addi => {
-                    self.regs.set(rd, rs1 + imm);
-                }
-                Opcode::auipc => {
-                    self.regs.set(rd, pc + (imm << 12));
-                }
-                Opcode::ecall => {
-                    let syscall = self.regs.get(Reg::a7);
-                    match syscall {
-                        Machine::SYSCALL_WRITE => {
-                            let fd = self.regs.get(Reg::a0);
-                            let buf = self.regs.get(Reg::a1);
-                            let count = self.regs.get(Reg::a2);
+        match opcode {
+            Opcode::unimp => {
+                bail!("Illegal instruction at pc={:04x}", self.pc);
+            }
+            Opcode::addi => {
+                self.regs.set(rd, rs1 + imm);
+            }
+            Opcode::auipc => {
+                self.regs.set(rd, pc + (imm << 12));
+            }
+            Opcode::ecall => {
+                let syscall = self.regs.get(Reg::a7);
+                match syscall {
+                    Machine::SYSCALL_WRITE => {
+                        let fd = self.regs.get(Reg::a0);
+                        let buf = self.regs.get(Reg::a1);
+                        let count = self.regs.get(Reg::a2);
 
-                            for i in 0..count {
-                                let c = self.mem.get(buf + i);
-                                match fd {
-                                    Machine::FD_STDOUT => self.out.push(c),
+                        for i in 0..count {
+                            let c = self.mem.get(buf + i);
+                            match fd {
+                                Machine::FD_STDOUT => self.out.push(c),
 
-                                    _ => panic!("Unknown fd: {fd}"),
-                                }
+                                _ => bail!("Unknown fd: {fd:04x} at pc={:04x}", self.pc),
                             }
                         }
-                        _ => todo!(),
                     }
+                    _ => todo!(),
                 }
-                Opcode::lui => {
-                    self.regs.set(rd, imm << 12);
-                }
+            }
+            Opcode::lui => {
+                self.regs.set(rd, imm << 12);
             }
         }
         Ok(())
@@ -265,8 +313,9 @@ impl Machine {
 impl TryFrom<Word> for Opcode {
     type Error = anyhow::Error;
 
-    fn try_from(word: Word) -> anyhow::Result<Self> {
+    fn try_from(word: Word) -> Result<Self> {
         match word {
+            0b000_0000 => Ok(Opcode::unimp),
             0b001_0011 => Ok(Opcode::addi),
             0b001_0111 => Ok(Opcode::auipc),
             0b111_0011 => Ok(Opcode::ecall),
@@ -279,6 +328,7 @@ impl TryFrom<Word> for Opcode {
 impl From<Opcode> for Word {
     fn from(value: Opcode) -> Self {
         match value {
+            Opcode::unimp => 0b000_0000,
             Opcode::addi => 0b001_0011,
             Opcode::auipc => 0b001_0111,
             Opcode::ecall => 0b111_0011,
@@ -309,7 +359,7 @@ impl From<Opcode> for Word {
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, Eq, PartialEq, Hash, PartialOrd)]
-enum Reg {
+pub enum Reg {
     #[default]
     zero,
     ra,
@@ -331,10 +381,39 @@ enum Reg {
     a7,
 }
 
+impl Display for Reg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Reg::zero => "zero",
+                Reg::ra => "ra",
+                Reg::sp => "sp",
+                Reg::gp => "gp",
+                Reg::tp => "tp",
+                Reg::t0 => "t0",
+                Reg::t1 => "t1",
+                Reg::t2 => "t2",
+                Reg::s0 => "s0",
+                Reg::s1 => "s1",
+                Reg::a0 => "a0",
+                Reg::a1 => "a1",
+                Reg::a2 => "a2",
+                Reg::a3 => "a3",
+                Reg::a4 => "a4",
+                Reg::a5 => "a5",
+                Reg::a6 => "a6",
+                Reg::a7 => "a7",
+            }
+        )
+    }
+}
+
 impl TryFrom<Word> for Reg {
     type Error = anyhow::Error;
 
-    fn try_from(word: Word) -> anyhow::Result<Self> {
+    fn try_from(word: Word) -> Result<Self> {
         match word {
             0b00000 => Ok(Reg::zero),
             0b01010 => Ok(Reg::a0),
@@ -393,7 +472,12 @@ fn assemble_instruction_statement(stmt: Statement) -> Vec<Instruction> {
     }
 }
 
-pub fn assemble(input: &str) -> anyhow::Result<Vec<Word>> {
+/// Assembles `input`.
+///
+/// # Errors
+///
+/// Returns any errors parsing the input.
+pub fn assemble(input: &str) -> Result<Vec<Word>> {
     let tokens = lexer::tokenize(input);
     let statements = parser::parse(tokens)?;
     let mut instructions: Vec<Instruction> = Vec::new();
@@ -572,9 +656,9 @@ mod tests {
             Instruction {
                 opcode: Opcode::auipc,
                 rd: Reg::a1,
-                imm: 0,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
+                imm: 0,
             },
             Instruction {
                 opcode: Opcode::addi,
@@ -586,9 +670,9 @@ mod tests {
             Instruction {
                 opcode: Opcode::addi,
                 rd: Reg::a2,
-                imm: 13,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
+                imm: 13,
             },
             Instruction {
                 opcode: Opcode::addi,
