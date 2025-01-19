@@ -54,9 +54,9 @@ impl Parser {
                 self.advance();
                 return Ok(Line::Label(ident));
             }
-            return self.instruction(ident);
+            self.instruction(ident)
         } else if self.matches(TokenType::Dot) {
-            return self.directive();
+            self.directive()
         } else {
             Err(anyhow!("expected identifier or directive"))
         }
