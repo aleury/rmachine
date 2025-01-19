@@ -3,21 +3,27 @@
 ```
 program := line ( '\n' line )*
 
-line := label | instruction
+line := label | instruction | directive
 
 label := identifier ':'
+
+directive := '.globl' identifier | '.section' identifier | '.ascii' string
 
 instruction := identifier operands*
 
 operands := operand ( ',' operand )*
 
-operand := register | immediate
+operand := identifier | immediate
 
-register := identifier
+identifier := alpha alnum+
 
 immediate := integer
 
-identifier := alpha alnum+
+string := '"' ( char | escape )* '"'
+
+char := any character except '"' and '\'
+
+escape := '\' ( '"' | '\' )
 
 integer := digit+
 

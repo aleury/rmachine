@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Debug, PartialEq)]
 pub struct Program {
     pub lines: Vec<Line>,
@@ -6,17 +8,41 @@ pub struct Program {
 #[derive(Debug, PartialEq)]
 pub enum Line {
     Label(Identifier),
-    Instruction {
-        name: Identifier,
-        operands: Vec<Operand>,
-    },
+    Directive(Directive),
+    Instruction(Instruction),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Identifier(pub String);
 
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for Identifier {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Operand {
-    Register(String),
     Immediate(u32),
+    Register(Identifier),
+    Symbol(Identifier),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Directive {
+    Ascii(String),
+    Global(Identifier),
+    Section(Identifier),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Instruction {
+    pub name: Identifier,
+    pub operands: Vec<Operand>,
 }

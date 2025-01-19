@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
 
-use crate::ast::{Line, Operand};
+use crate::ast::{self, Line, Operand};
 use crate::lexer;
 use crate::parser::Parser;
 
@@ -299,18 +299,14 @@ impl From<Instruction> for Word {
     }
 }
 
-pub fn assemble_instruction(line: Line) -> Result<Vec<Instruction>> {
-    let Line::Instruction { name, operands } = line else {
-        return Err(anyhow!("expected instruction"));
-    };
-
-    let instructions = match name.0.as_str() {
+pub fn assemble_instruction(instr: ast::Instruction) -> Result<Vec<Instruction>> {
+    let instructions = match instr.name.as_ref() {
         "li" => {
-            assert_eq!(operands.len(), 2, "expected 2 operands for li");
-            let Operand::Register(ref rd) = operands[0] else {
+            assert_eq!(instr.operands.len(), 2, "expected 2 operands for li");
+            let Operand::Register(ref rd) = instr.operands[0] else {
                 return Err(anyhow!("expected register"));
             };
-            let Operand::Immediate(imm) = operands[1] else {
+            let Operand::Immediate(imm) = instr.operands[1] else {
                 return Err(anyhow!("expected immediate"));
             };
             vec![Instruction {
@@ -322,7 +318,7 @@ pub fn assemble_instruction(line: Line) -> Result<Vec<Instruction>> {
             }]
         }
         "ecall" => {
-            assert_eq!(operands.len(), 0, "expected 0 operands for ecall");
+            assert_eq!(instr.operands.len(), 0, "expected 0 operands for ecall");
             vec![Instruction {
                 opcode: Opcode::ecall,
                 rd: Reg::zero,
@@ -352,8 +348,9 @@ pub fn assemble(input: &str) -> Result<Vec<Word>> {
     for line in program.lines {
         match line {
             Line::Label(identifier) => todo!(),
-            Line::Instruction { .. } => {
-                let mut instruction = assemble_instruction(line)?;
+            Line::Directive(directive) => todo!(),
+            Line::Instruction(instruction) => {
+                let mut instruction = assemble_instruction(instruction)?;
                 instructions.append(&mut instruction);
             }
         }
