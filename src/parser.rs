@@ -1,108 +1,136 @@
-use anyhow::anyhow;
+use crate::{
+    ast::{Directive, Identifier, Instruction, Line, Operand, Program},
+    lexer::{Token, TokenType},
+};
+use anyhow::{anyhow, Result};
+use std::{iter::Peekable, vec::IntoIter};
 
-use crate::lexer::Token;
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
-pub enum InstructionName {
-    addi,
-    auipc,
-    ecall,
-    la,
-    li,
-    lui,
+pub struct Parser {
+    tokens: Peekable<IntoIter<Token>>,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
-pub enum RegisterName {
-    zero,
-    a0,
-    a1,
-    a2,
-    a7,
-}
-
-impl TryFrom<String> for RegisterName {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.as_str() {
-            "zero" => Ok(RegisterName::zero),
-            "a0" => Ok(RegisterName::a0),
-            "a1" => Ok(RegisterName::a1),
-            "a2" => Ok(RegisterName::a2),
-            "a7" => Ok(RegisterName::a7),
-            _ => Err(anyhow!("unknown register: {value:#?}")),
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
+        Self {
+            tokens: tokens.into_iter().peekable(),
         }
     }
-}
 
-#[derive(Debug, PartialEq)]
-pub enum Statement {
-    Instruction {
-        name: InstructionName,
-        rd: RegisterName,
-        rs1: RegisterName,
-        rs2: RegisterName,
-        imm: u32,
-    },
-}
+    pub fn parse(&mut self) -> Result<Program> {
+        let mut program = Program { lines: Vec::new() };
+        while self.tokens.peek().is_some() {
+            let line = self.line()?;
+            program.lines.push(line);
+        }
+        Ok(program)
+    }
 
-impl TryFrom<String> for InstructionName {
-    type Error = anyhow::Error;
+    fn advance(&mut self) -> Option<Token> {
+        self.tokens.next()
+    }
 
-    fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-        match value.as_str() {
-            "addi" => Ok(InstructionName::addi),
-            "auipc" => Ok(InstructionName::auipc),
-            "ecall" => Ok(InstructionName::ecall),
-            "li" => Ok(InstructionName::li),
-            "la" => Ok(InstructionName::la),
-            "lui" => Ok(InstructionName::lui),
-            _ => Err(anyhow!("unknown instruction: {value:#?}")),
+    fn peek(&mut self) -> Option<&Token> {
+        self.tokens.peek()
+    }
+
+    fn matches(&mut self, token_type: TokenType) -> bool {
+        self.tokens
+            .peek()
+            .is_some_and(|t| t.token_type == token_type)
+    }
+
+    fn expect(&mut self, token_type: TokenType) -> Result<Token> {
+        if self.matches(token_type) {
+            self.advance().ok_or(anyhow!("unexpected end of tokens"))
+        } else {
+            Err(anyhow!("expected token type: {token_type:#?}"))
         }
     }
-}
 
-pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<Statement>> {
-    let mut instructions = Vec::new();
-    let mut token_iter = tokens.into_iter().peekable();
+    fn line(&mut self) -> Result<Line> {
+        if self.matches(TokenType::Identifier) {
+            let ident = self.identifier()?;
+            if self.matches(TokenType::Colon) {
+                self.advance();
+                return Ok(Line::Label(ident.to_string()));
+            }
+            self.instruction(ident.to_string())
+        } else if self.matches(TokenType::Dot) {
+            self.directive()
+        } else {
+            Err(anyhow!("expected identifier or directive"))
+        }
+    }
 
-    while let Some(Token::Identifier(ident)) = token_iter.next() {
-        let instr_name = ident.try_into()?;
-        let instruction = match instr_name {
-            InstructionName::li => {
-                let Some(Token::Identifier(rd)) = token_iter.next() else {
-                    return Err(anyhow!("expected destination register: rd"));
-                };
-                let Some(Token::Comma) = token_iter.next() else {
-                    return Err(anyhow!("syntax error: missing comma"));
-                };
-                let Some(Token::Integer(imm)) = token_iter.next() else {
-                    return Err(anyhow!("syntax error: missing immediate value operand"));
-                };
-                Statement::Instruction {
-                    name: instr_name,
-                    rd: rd.try_into()?,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm,
+    fn directive(&mut self) -> Result<Line> {
+        self.expect(TokenType::Dot)?;
+        let ident = self.identifier()?;
+        let directive = match ident.as_ref() {
+            "globl" => {
+                let symbol = self.identifier()?;
+                Directive::Global(symbol.to_string())
+            }
+            "section" => {
+                self.expect(TokenType::Dot)?;
+                let section = self.identifier()?;
+                Directive::Section(format!(".{section}"))
+            }
+            "ascii" => {
+                let string = self.expect(TokenType::String)?;
+                Directive::Ascii(string.lexeme)
+            }
+            _ => todo!(),
+        };
+        Ok(Line::Directive(directive))
+    }
+
+    fn instruction(&mut self, name: String) -> Result<Line> {
+        let instruction = match name.as_str() {
+            "la" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let symbol = self.identifier()?;
+                Instruction {
+                    name,
+                    operands: vec![rd, Operand::Symbol(symbol.0)],
                 }
             }
-            InstructionName::ecall => Statement::Instruction {
-                name: instr_name,
-                rd: RegisterName::zero,
-                rs1: RegisterName::zero,
-                rs2: RegisterName::zero,
-                imm: 0,
+            "li" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let imm = self.immediate()?;
+                Instruction {
+                    name,
+                    operands: vec![rd, imm],
+                }
+            }
+            "ecall" => Instruction {
+                name,
+                operands: vec![],
             },
             _ => todo!(),
         };
-        instructions.push(instruction);
+
+        Ok(Line::Instruction(instruction))
     }
 
-    Ok(instructions)
+    fn identifier(&mut self) -> Result<Identifier> {
+        let token = self.expect(TokenType::Identifier)?;
+        Ok(Identifier(token.lexeme))
+    }
+
+    fn register(&mut self) -> Result<Operand> {
+        let ident = self.identifier()?;
+        Ok(Operand::Register(ident.to_string()))
+    }
+
+    fn immediate(&mut self) -> Result<Operand> {
+        self.expect(TokenType::Integer)?
+            .lexeme
+            .parse()
+            .map(Operand::Immediate)
+            .map_err(|_| anyhow!("expected to parse integer"))
+    }
 }
 
 #[cfg(test)]
@@ -111,69 +139,56 @@ mod tests {
     use crate::lexer;
 
     #[test]
-    fn parse_returns_instruction_statements() {
-        struct TestCase {
-            program: String,
-            want: Vec<Statement>,
-        }
+    fn parser_parse_returns_program_ast() {
+        let program = "
+        .globl _start
+        .section .text
+        _start:
+            li a0, 1
+            la a1, helloworld
+            li a2, 13
+            li a7, 64
+            ecall
+        helloworld:
+            .ascii \"Hello World!\n\"
+        ";
 
-        let cases = vec![
-            TestCase {
-                program: "li a0, 1".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a0,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 1,
-                }],
-            },
-            TestCase {
-                program: "li a1, 32".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a1,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 32,
-                }],
-            },
-            TestCase {
-                program: "li a2, 13".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a2,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 13,
-                }],
-            },
-            TestCase {
-                program: "li a7, 64".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a7,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 64,
-                }],
-            },
-            TestCase {
-                program: "ecall".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::ecall,
-                    rd: RegisterName::zero,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 0,
-                }],
-            },
-        ];
+        let want = Program {
+            lines: vec![
+                Line::Directive(Directive::Global("_start".to_string())),
+                Line::Directive(Directive::Section(".text".to_string())),
+                Line::Label("_start".to_string()),
+                Line::Instruction(Instruction {
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(1)],
+                }),
+                Line::Instruction(Instruction {
+                    name: "la".to_string(),
+                    operands: vec![
+                        Operand::Register("a1".to_string()),
+                        Operand::Symbol("helloworld".to_string()),
+                    ],
+                }),
+                Line::Instruction(Instruction {
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a2".to_string()), Operand::Immediate(13)],
+                }),
+                Line::Instruction(Instruction {
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a7".to_string()), Operand::Immediate(64)],
+                }),
+                Line::Instruction(Instruction {
+                    name: "ecall".to_string(),
+                    operands: vec![],
+                }),
+                Line::Label("helloworld".to_string()),
+                Line::Directive(Directive::Ascii("\"Hello World!\n\"".into())),
+            ],
+        };
 
-        for case in cases {
-            let tokens = lexer::tokenize(&case.program);
-            let got = parse(tokens).unwrap();
-            assert_eq!(case.want, got);
-        }
+        let tokens = lexer::tokenize(program);
+        let mut parser = Parser::new(tokens);
+        let got = parser.parse().unwrap();
+        assert_eq!(want, got);
     }
 }
