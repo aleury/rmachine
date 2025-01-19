@@ -28,13 +28,6 @@ impl AsRef<str> for Identifier {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Operand {
-    Immediate(u32),
-    Register(Identifier),
-    Symbol(Identifier),
-}
-
-#[derive(Debug, PartialEq)]
 pub enum Directive {
     Ascii(String),
     Global(Identifier),
@@ -45,4 +38,11 @@ pub enum Directive {
 pub struct Instruction {
     pub name: Identifier,
     pub operands: Vec<Operand>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Operand {
+    Immediate(u32),
+    Register(Identifier),
+    Symbol(Identifier),
 }
