@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn test_assemble_program_returns_instructons() {
+    fn test_assemble_program_returns_object() {
         let program = parse(
             "_start:
                 la a0, helloworld
