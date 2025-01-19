@@ -55,7 +55,7 @@ impl Parser {
             let ident = self.identifier()?;
             if self.matches(TokenType::Colon) {
                 self.advance();
-                return Ok(Line::Label(ident));
+                return self.label(ident);
             } else {
                 return self.instruction(ident);
             }
