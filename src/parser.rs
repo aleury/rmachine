@@ -43,7 +43,7 @@ impl Parser {
 
     fn expect(&mut self, token_type: TokenType) -> Result<Token> {
         if self.matches(token_type) {
-            self.advance().ok_or(anyhow!("expected token"))
+            self.advance().ok_or(anyhow!("unexpected end of tokens"))
         } else {
             Err(anyhow!("expected token type: {token_type:#?}"))
         }
