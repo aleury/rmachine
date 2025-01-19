@@ -96,13 +96,13 @@ impl Lexer {
                 Token::new(TokenType::Integer, lexeme)
             }
             '"' => {
-                let start = self.pos;
                 self.read_char(); // consume the opening quote
+                let start = self.pos;
                 while self.char != '"' {
                     self.read_char();
                 }
-                self.read_char(); // consume the closing quote
                 let lexeme = self.input[start..self.pos].iter().collect::<String>();
+                self.read_char(); // consume the closing quote
                 Token::new(TokenType::String, lexeme)
             }
             '\0' => Token::new(TokenType::Eof, ""),
@@ -154,7 +154,7 @@ mod tests {
                     },
                     Token {
                         token_type: TokenType::String,
-                        lexeme: "\"Hello World!\n\"".into(),
+                        lexeme: "Hello World!\n".into(),
                     },
                 ],
             },

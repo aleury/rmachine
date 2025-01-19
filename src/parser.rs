@@ -182,7 +182,7 @@ mod tests {
                     operands: vec![],
                 }),
                 Line::Label("helloworld".to_string()),
-                Line::Directive(Directive::Ascii("\"Hello World!\n\"".into())),
+                Line::Directive(Directive::Ascii("Hello World!\n".into())),
             ],
         };
 

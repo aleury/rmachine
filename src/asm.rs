@@ -1,8 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
 
-use crate::ast::{self, Line, Operand};
+use crate::ast::{self, Directive, Line, Operand};
 use crate::lexer;
 use crate::parser::Parser;
 
@@ -299,8 +300,58 @@ impl From<Instruction> for Word {
     }
 }
 
-pub fn assemble_instruction(instr: ast::Instruction) -> Result<Vec<Instruction>> {
+struct SymbolTable {
+    labels: HashMap<String, Address>,
+}
+
+impl SymbolTable {
+    fn new() -> Self {
+        Self {
+            labels: HashMap::new(),
+        }
+    }
+
+    fn add_label(&mut self, name: impl Into<String>, address: Address) {
+        self.labels.insert(name.into(), address);
+    }
+
+    fn lookup(&self, name: &str) -> Option<Address> {
+        self.labels.get(name).copied()
+    }
+}
+
+struct Ref {
+    name: String,
+    address: Address,
+}
+
+fn assemble_instruction(
+    instr: ast::Instruction,
+    address: Address,
+    refs: &mut Vec<Ref>,
+    symbols: &mut SymbolTable,
+) -> Result<Vec<Instruction>> {
     let instructions = match instr.name.as_ref() {
+        "la" => {
+            assert_eq!(instr.operands.len(), 2, "expected 2 operands for la");
+            let Operand::Register(ref rd) = instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Symbol(ref symbol) = instr.operands[1] else {
+                return Err(anyhow!("expected symbol"));
+            };
+            refs.push(Ref {
+                name: symbol.to_string(),
+                address,
+            });
+            vec![Instruction {
+                opcode: Opcode::addi,
+                rd: Reg::try_from(rd.to_string())?,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm: 0,
+            }]
+        }
         "li" => {
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for li");
             let Operand::Register(ref rd) = instr.operands[0] else {
@@ -333,6 +384,48 @@ pub fn assemble_instruction(instr: ast::Instruction) -> Result<Vec<Instruction>>
     Ok(instructions)
 }
 
+#[derive(Debug, PartialEq)]
+struct Object {
+    data: Vec<Word>,
+    instructions: Vec<Instruction>,
+}
+
+fn assemble_program(program: ast::Program) -> Result<Object> {
+    let mut refs: Vec<Ref> = Vec::new();
+    let mut symbols = SymbolTable::new();
+    let mut data: Vec<Word> = Vec::new();
+    let mut instructions: Vec<Instruction> = Vec::new();
+
+    for line in program.lines {
+        let address = instructions.len() as Address;
+        match line {
+            Line::Label(label) => symbols.add_label(label, address),
+            Line::Directive(directive) => match directive {
+                Directive::Ascii(string) => {
+                    for c in string.chars() {
+                        data.push(c as Word);
+                    }
+                }
+                _ => todo!(),
+            },
+            Line::Instruction(instruction) => {
+                let mut instruction =
+                    assemble_instruction(instruction, address, &mut refs, &mut symbols)?;
+                instructions.append(&mut instruction);
+            }
+        }
+    }
+
+    // Resolve references
+    for r in refs {
+        instructions[r.address as usize].imm = symbols
+            .lookup(&r.name)
+            .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
+    }
+
+    Ok(Object { data, instructions })
+}
+
 /// Assembles `input`.
 ///
 /// # Errors
@@ -343,25 +436,111 @@ pub fn assemble(input: &str) -> Result<Vec<Word>> {
     let mut parser = Parser::new(tokens);
 
     let program = parser.parse()?;
-    let mut instructions: Vec<Instruction> = Vec::new();
+    let obj = assemble_program(program)?;
 
-    for line in program.lines {
-        match line {
-            Line::Label(identifier) => todo!(),
-            Line::Directive(directive) => todo!(),
-            Line::Instruction(instruction) => {
-                let mut instruction = assemble_instruction(instruction)?;
-                instructions.append(&mut instruction);
-            }
-        }
-    }
-
-    Ok(instructions.into_iter().map(Word::from).collect())
+    Ok(obj.instructions.into_iter().map(Word::from).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decodes_and_encodes_instructions_successfully() {
+        struct TestCase {
+            word: Word,
+            instruction: Instruction,
+        }
+        let cases = vec![
+            TestCase {
+                // I-Type:
+                //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
+                word: 0b0000_0010_0000_0101_1000_0101_1001_0011,
+                instruction: Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::a1,
+                    rs1: Reg::a1,
+                    rs2: Reg::zero,
+                    imm: 32,
+                },
+            },
+            TestCase {
+                // U-Type:
+                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
+                word: 0b0000_0000_0000_0000_0010_0101_0001_0111,
+                instruction: Instruction {
+                    opcode: Opcode::auipc,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 2,
+                },
+            },
+            TestCase {
+                word: 0b0000_0000_0000_0000_0000_0000_0111_0011,
+                instruction: Instruction {
+                    opcode: Opcode::ecall,
+                    rd: Reg::zero,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 0,
+                },
+            },
+            TestCase {
+                // U-Type:
+                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
+                word: 0b0000_0000_0000_0000_0010_0101_0011_0111,
+                instruction: Instruction {
+                    opcode: Opcode::lui,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 2,
+                },
+            },
+        ];
+
+        for case in cases {
+            let got = Instruction::try_from(case.word).unwrap();
+            assert_eq!(
+                case.instruction, got,
+                "failed to decode instruction from word"
+            );
+
+            let got: Word = got.into();
+
+            assert_eq!(
+                case.word, got,
+                "failed to encode instruction into word: {:b}, {:b}",
+                case.word, got,
+            );
+        }
+    }
+
+    #[test]
+    fn test_assemble_program_returns_instructons() {
+        let program = parse(
+            "_start:
+                la a0, helloworld
+            helloworld:
+                .ascii \"Hello World!\n\"
+            ",
+        );
+
+        let want = Object {
+            data: "Hello World!\n".chars().map(|c| c as Word).collect(),
+            instructions: vec![Instruction {
+                opcode: Opcode::addi,
+                rd: Reg::a0,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm: 1,
+            }],
+        };
+
+        let got = assemble_program(program).unwrap();
+        assert_eq!(want, got);
+    }
 
     #[test]
     fn test_assemble() {
@@ -428,5 +607,11 @@ mod tests {
             let got = assemble(&case.program).unwrap();
             assert_eq!(want, got);
         }
+    }
+
+    fn parse(input: &str) -> ast::Program {
+        let tokens = lexer::tokenize(input);
+        let mut parser = Parser::new(tokens);
+        parser.parse().unwrap()
     }
 }

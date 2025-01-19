@@ -161,82 +161,9 @@ impl Machine {
 
 #[cfg(test)]
 mod tests {
-    use crate::asm;
-
     use super::*;
-    use claims::{assert_err, assert_err_eq, assert_ok, assert_ok_eq, assert_some_eq};
-
-    #[test]
-    fn decodes_and_encodes_instructions_successfully() {
-        struct TestCase {
-            word: Word,
-            instruction: Instruction,
-        }
-        let cases = vec![
-            TestCase {
-                // I-Type:
-                //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
-                word: 0b0000_0010_0000_0101_1000_0101_1001_0011,
-                instruction: Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::a1,
-                    rs1: Reg::a1,
-                    rs2: Reg::zero,
-                    imm: 32,
-                },
-            },
-            TestCase {
-                // U-Type:
-                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
-                word: 0b0000_0000_0000_0000_0010_0101_0001_0111,
-                instruction: Instruction {
-                    opcode: Opcode::auipc,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 2,
-                },
-            },
-            TestCase {
-                word: 0b0000_0000_0000_0000_0000_0000_0111_0011,
-                instruction: Instruction {
-                    opcode: Opcode::ecall,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                },
-            },
-            TestCase {
-                // U-Type:
-                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
-                word: 0b0000_0000_0000_0000_0010_0101_0011_0111,
-                instruction: Instruction {
-                    opcode: Opcode::lui,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 2,
-                },
-            },
-        ];
-
-        for case in cases {
-            let got = Instruction::try_from(case.word).unwrap();
-            assert_eq!(
-                case.instruction, got,
-                "failed to decode instruction from word"
-            );
-
-            let got: Word = got.into();
-
-            assert_eq!(
-                case.word, got,
-                "failed to encode instruction into word: {:b}, {:b}",
-                case.word, got,
-            );
-        }
-    }
+    use crate::asm;
+    use claims::assert_err;
 
     #[test]
     fn executes_lui_instruction_successfully() {
@@ -300,6 +227,7 @@ mod tests {
 
     #[test]
     fn executes_ecall_instruction_successfully() {
+        // .globl _start
         // .section .text
         // _start:
         //   li a0, 1  # fd = 1 (stdout)
