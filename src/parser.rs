@@ -54,7 +54,7 @@ impl Parser {
                 self.advance();
                 return Ok(Line::Label(ident.to_string()));
             }
-            self.instruction(ident)
+            self.instruction(ident.to_string())
         } else if self.matches(TokenType::Dot) {
             self.directive()
         } else {
@@ -84,14 +84,14 @@ impl Parser {
         Ok(Line::Directive(directive))
     }
 
-    fn instruction(&mut self, ident: Identifier) -> Result<Line> {
-        let instruction = match ident.as_ref() {
+    fn instruction(&mut self, name: String) -> Result<Line> {
+        let instruction = match name.as_str() {
             "la" => {
                 let rd = self.register()?;
                 self.expect(TokenType::Comma)?;
                 let symbol = self.identifier()?;
                 Instruction {
-                    name: ident.to_string(),
+                    name: name.to_string(),
                     operands: vec![rd, Operand::Symbol(symbol.0)],
                 }
             }
@@ -100,12 +100,12 @@ impl Parser {
                 self.expect(TokenType::Comma)?;
                 let imm = self.immediate()?;
                 Instruction {
-                    name: ident.to_string(),
+                    name: name.to_string(),
                     operands: vec![rd, imm],
                 }
             }
             "ecall" => Instruction {
-                name: ident.to_string(),
+                name: name.to_string(),
                 operands: vec![],
             },
             _ => todo!(),
