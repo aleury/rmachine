@@ -1,108 +1,110 @@
-use anyhow::anyhow;
+use std::{iter::Peekable, vec::IntoIter};
 
-use crate::lexer::Token;
+use anyhow::{anyhow, Result};
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
-pub enum InstructionName {
-    addi,
-    auipc,
-    ecall,
-    la,
-    li,
-    lui,
+use crate::{
+    ast::{Identifier, Line, Operand, Program},
+    lexer::{Token, TokenType},
+};
+
+pub struct Parser {
+    tokens: Peekable<IntoIter<Token>>,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
-pub enum RegisterName {
-    zero,
-    a0,
-    a1,
-    a2,
-    a7,
-}
-
-impl TryFrom<String> for RegisterName {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.as_str() {
-            "zero" => Ok(RegisterName::zero),
-            "a0" => Ok(RegisterName::a0),
-            "a1" => Ok(RegisterName::a1),
-            "a2" => Ok(RegisterName::a2),
-            "a7" => Ok(RegisterName::a7),
-            _ => Err(anyhow!("unknown register: {value:#?}")),
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
+        Self {
+            tokens: tokens.into_iter().peekable(),
         }
     }
-}
 
-#[derive(Debug, PartialEq)]
-pub enum Statement {
-    Instruction {
-        name: InstructionName,
-        rd: RegisterName,
-        rs1: RegisterName,
-        rs2: RegisterName,
-        imm: u32,
-    },
-}
+    pub fn parse(&mut self) -> Result<Program> {
+        let mut program = Program { lines: Vec::new() };
+        while self.tokens.peek().is_some() {
+            let line = self.line()?;
+            program.lines.push(line);
+        }
+        Ok(program)
+    }
 
-impl TryFrom<String> for InstructionName {
-    type Error = anyhow::Error;
+    fn advance(&mut self) -> Option<Token> {
+        self.tokens.next()
+    }
 
-    fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-        match value.as_str() {
-            "addi" => Ok(InstructionName::addi),
-            "auipc" => Ok(InstructionName::auipc),
-            "ecall" => Ok(InstructionName::ecall),
-            "li" => Ok(InstructionName::li),
-            "la" => Ok(InstructionName::la),
-            "lui" => Ok(InstructionName::lui),
-            _ => Err(anyhow!("unknown instruction: {value:#?}")),
+    fn peek(&mut self) -> Option<&Token> {
+        self.tokens.peek()
+    }
+
+    fn matches(&mut self, token_type: TokenType) -> bool {
+        self.tokens
+            .peek()
+            .map(|t| t.token_type == token_type)
+            .unwrap_or(false)
+    }
+
+    fn expect(&mut self, token_type: TokenType) -> Result<Token> {
+        if self.matches(token_type) {
+            self.advance().ok_or(anyhow!("expected token"))
+        } else {
+            Err(anyhow!("expected token type: {token_type:#?}"))
         }
     }
-}
 
-pub fn parse(tokens: Vec<Token>) -> anyhow::Result<Vec<Statement>> {
-    let mut instructions = Vec::new();
-    let mut token_iter = tokens.into_iter().peekable();
+    fn line(&mut self) -> Result<Line> {
+        if self.matches(TokenType::Identifier) {
+            let ident = self.identifier()?;
+            if self.matches(TokenType::Colon) {
+                self.advance();
+                return Ok(Line::Label(ident));
+            } else {
+                return self.instruction(ident);
+            }
+        }
+        todo!("implement directive parsing")
+    }
 
-    while let Some(Token::Identifier(ident)) = token_iter.next() {
-        let instr_name = ident.try_into()?;
-        let instruction = match instr_name {
-            InstructionName::li => {
-                let Some(Token::Identifier(rd)) = token_iter.next() else {
-                    return Err(anyhow!("expected destination register: rd"));
-                };
-                let Some(Token::Comma) = token_iter.next() else {
-                    return Err(anyhow!("syntax error: missing comma"));
-                };
-                let Some(Token::Integer(imm)) = token_iter.next() else {
-                    return Err(anyhow!("syntax error: missing immediate value operand"));
-                };
-                Statement::Instruction {
-                    name: instr_name,
-                    rd: rd.try_into()?,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm,
+    fn label(&self, ident: Identifier) -> Result<Line> {
+        Ok(Line::Label(ident))
+    }
+
+    fn instruction(&mut self, ident: Identifier) -> Result<Line> {
+        let instruction = match ident.0.as_str() {
+            "li" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let imm = self.immediate()?;
+                Line::Instruction {
+                    name: ident,
+                    operands: vec![rd, imm],
                 }
             }
-            InstructionName::ecall => Statement::Instruction {
-                name: instr_name,
-                rd: RegisterName::zero,
-                rs1: RegisterName::zero,
-                rs2: RegisterName::zero,
-                imm: 0,
+            "ecall" => Line::Instruction {
+                name: ident,
+                operands: vec![],
             },
             _ => todo!(),
         };
-        instructions.push(instruction);
+
+        Ok(instruction)
     }
 
-    Ok(instructions)
+    fn identifier(&mut self) -> Result<Identifier> {
+        let token = self.expect(TokenType::Identifier)?;
+        Ok(Identifier(token.lexeme.clone()))
+    }
+
+    fn register(&mut self) -> Result<Operand> {
+        let token = self.expect(TokenType::Identifier)?;
+        Ok(Operand::Register(token.lexeme.clone()))
+    }
+
+    fn immediate(&mut self) -> Result<Operand> {
+        self.expect(TokenType::Integer)?
+            .lexeme
+            .parse()
+            .map(Operand::Immediate)
+            .map_err(|_| anyhow!("expected to parse integer"))
+    }
 }
 
 #[cfg(test)]
@@ -111,69 +113,45 @@ mod tests {
     use crate::lexer;
 
     #[test]
-    fn parse_returns_instruction_statements() {
-        struct TestCase {
-            program: String,
-            want: Vec<Statement>,
-        }
+    fn parser_parse_returns_program_ast() {
+        let program = r#"
+        _start:
+            li a0, 1
+            li a1, 32
+            li a2, 13
+            li a7, 64
+            ecall
+        "#;
 
-        let cases = vec![
-            TestCase {
-                program: "li a0, 1".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a0,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 1,
-                }],
-            },
-            TestCase {
-                program: "li a1, 32".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a1,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 32,
-                }],
-            },
-            TestCase {
-                program: "li a2, 13".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a2,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 13,
-                }],
-            },
-            TestCase {
-                program: "li a7, 64".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::li,
-                    rd: RegisterName::a7,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 64,
-                }],
-            },
-            TestCase {
-                program: "ecall".into(),
-                want: vec![Statement::Instruction {
-                    name: InstructionName::ecall,
-                    rd: RegisterName::zero,
-                    rs1: RegisterName::zero,
-                    rs2: RegisterName::zero,
-                    imm: 0,
-                }],
-            },
-        ];
+        let want = Program {
+            lines: vec![
+                Line::Label(Identifier("_start".into())),
+                Line::Instruction {
+                    name: Identifier("li".into()),
+                    operands: vec![Operand::Register("a0".into()), Operand::Immediate(1)],
+                },
+                Line::Instruction {
+                    name: Identifier("li".into()),
+                    operands: vec![Operand::Register("a1".into()), Operand::Immediate(32)],
+                },
+                Line::Instruction {
+                    name: Identifier("li".into()),
+                    operands: vec![Operand::Register("a2".into()), Operand::Immediate(13)],
+                },
+                Line::Instruction {
+                    name: Identifier("li".into()),
+                    operands: vec![Operand::Register("a7".into()), Operand::Immediate(64)],
+                },
+                Line::Instruction {
+                    name: Identifier("ecall".into()),
+                    operands: vec![],
+                },
+            ],
+        };
 
-        for case in cases {
-            let tokens = lexer::tokenize(&case.program);
-            let got = parse(tokens).unwrap();
-            assert_eq!(case.want, got);
-        }
+        let tokens = lexer::tokenize(program);
+        let mut parser = Parser::new(tokens);
+        let got = parser.parse().unwrap();
+        assert_eq!(want, got);
     }
 }
