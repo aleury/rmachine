@@ -1,13 +1,28 @@
-#[derive(Debug, PartialEq)]
-pub enum Token {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TokenType {
     Eof,
-    Illegal(String),
+    Illegal,
     Colon,
     Comma,
     Dot,
-    Integer(u32),
-    Identifier(String),
-    String(String),
+    Integer,
+    Identifier,
+    String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub lexeme: String,
+}
+
+impl Token {
+    fn new(token_type: TokenType, lexeme: impl Into<String>) -> Self {
+        Self {
+            token_type,
+            lexeme: lexeme.into(),
+        }
+    }
 }
 
 struct Lexer {
@@ -54,15 +69,15 @@ impl Lexer {
         match self.char {
             ':' => {
                 self.read_char();
-                Token::Colon
+                Token::new(TokenType::Colon, ":")
             }
             ',' => {
                 self.read_char();
-                Token::Comma
+                Token::new(TokenType::Comma, ",")
             }
             '.' => {
                 self.read_char();
-                Token::Dot
+                Token::new(TokenType::Dot, ".")
             }
             'a'..='z' | '_' => {
                 let start = self.pos;
@@ -70,7 +85,7 @@ impl Lexer {
                     self.read_char();
                 }
                 let ident: String = self.input[start..self.pos].iter().collect();
-                Token::Identifier(ident)
+                Token::new(TokenType::Identifier, ident)
             }
             '0'..='9' => {
                 let start = self.pos;
@@ -78,11 +93,7 @@ impl Lexer {
                     self.read_char();
                 }
                 let lexeme = self.input[start..self.pos].iter().collect::<String>();
-                if let Ok(int) = lexeme.parse::<u32>() {
-                    Token::Integer(int)
-                } else {
-                    Token::Illegal(lexeme)
-                }
+                Token::new(TokenType::Integer, lexeme)
             }
             '"' => {
                 let start = self.pos;
@@ -92,10 +103,10 @@ impl Lexer {
                 }
                 self.read_char(); // consume the closing quote
                 let lexeme = self.input[start..self.pos].iter().collect::<String>();
-                Token::String(lexeme)
+                Token::new(TokenType::String, lexeme)
             }
-            '\0' => Token::Eof,
-            _ => Token::Illegal(self.char.to_string()),
+            '\0' => Token::new(TokenType::Eof, ""),
+            _ => Token::new(TokenType::Illegal, self.char),
         }
     }
 }
@@ -106,10 +117,10 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
     loop {
         let token = lexer.next_token();
-        match token {
-            Token::Eof => break,
-            Token::Illegal(char) => {
-                panic!("illegal token: {char:#?}");
+        match token.token_type {
+            TokenType::Eof => break,
+            TokenType::Illegal => {
+                panic!("illegal token: {:#?}", token);
             }
             _ => tokens.push(token),
         }
@@ -132,80 +143,182 @@ mod tests {
             TestCase {
                 program: ".ascii \"Hello World!\n\"".to_string(),
                 want: vec![
-                    Token::Dot,
-                    Token::Identifier("ascii".into()),
-                    Token::String("\"Hello World!\n\"".into()),
+                    Token {
+                        token_type: TokenType::Dot,
+                        lexeme: ".".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "ascii".into(),
+                    },
+                    Token {
+                        token_type: TokenType::String,
+                        lexeme: "\"Hello World!\n\"".into(),
+                    },
                 ],
             },
             TestCase {
                 program: ".global _start".to_string(),
                 want: vec![
-                    Token::Dot,
-                    Token::Identifier("global".into()),
-                    Token::Identifier("_start".into()),
+                    Token {
+                        token_type: TokenType::Dot,
+                        lexeme: ".".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "global".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "_start".into(),
+                    },
                 ],
             },
             TestCase {
                 program: ".section .text".to_string(),
                 want: vec![
-                    Token::Dot,
-                    Token::Identifier("section".into()),
-                    Token::Dot,
-                    Token::Identifier("text".into()),
+                    Token {
+                        token_type: TokenType::Dot,
+                        lexeme: ".".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "section".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Dot,
+                        lexeme: ".".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "text".into(),
+                    },
                 ],
             },
             TestCase {
                 program: "_start:".to_string(),
-                want: vec![Token::Identifier("_start".into()), Token::Colon],
+                want: vec![
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "_start".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Colon,
+                        lexeme: ":".into(),
+                    },
+                ],
             },
             TestCase {
                 program: "li a0, 1".into(),
                 want: vec![
-                    Token::Identifier("li".into()),
-                    Token::Identifier("a0".into()),
-                    Token::Comma,
-                    Token::Integer(1),
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a0".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "1".into(),
+                    },
                 ],
             },
             TestCase {
                 program: "li a1, 32".into(),
                 want: vec![
-                    Token::Identifier("li".into()),
-                    Token::Identifier("a1".into()),
-                    Token::Comma,
-                    Token::Integer(32),
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a1".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "32".into(),
+                    },
                 ],
             },
             TestCase {
                 program: "li a2, 13".into(),
                 want: vec![
-                    Token::Identifier("li".into()),
-                    Token::Identifier("a2".into()),
-                    Token::Comma,
-                    Token::Integer(13),
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a2".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "13".into(),
+                    },
                 ],
             },
             TestCase {
                 program: "li a7, 64".into(),
                 want: vec![
-                    Token::Identifier("li".into()),
-                    Token::Identifier("a7".into()),
-                    Token::Comma,
-                    Token::Integer(64),
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a7".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "64".into(),
+                    },
                 ],
             },
             TestCase {
                 program: "la a1, helloworld".into(),
                 want: vec![
-                    Token::Identifier("la".into()),
-                    Token::Identifier("a1".into()),
-                    Token::Comma,
-                    Token::Identifier("helloworld".into()),
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "la".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a1".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".into(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "helloworld".into(),
+                    },
                 ],
             },
             TestCase {
                 program: "ecall".into(),
-                want: vec![Token::Identifier("ecall".into())],
+                want: vec![Token {
+                    token_type: TokenType::Identifier,
+                    lexeme: "ecall".into(),
+                }],
             },
         ];
 
