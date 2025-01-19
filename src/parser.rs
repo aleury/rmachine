@@ -38,8 +38,7 @@ impl Parser {
     fn matches(&mut self, token_type: TokenType) -> bool {
         self.tokens
             .peek()
-            .map(|t| t.token_type == token_type)
-            .unwrap_or(false)
+            .is_some_and(|t| t.token_type == token_type)
     }
 
     fn expect(&mut self, token_type: TokenType) -> Result<Token> {
@@ -55,16 +54,11 @@ impl Parser {
             let ident = self.identifier()?;
             if self.matches(TokenType::Colon) {
                 self.advance();
-                return self.label(ident);
-            } else {
-                return self.instruction(ident);
+                return Ok(Line::Label(ident));
             }
+            return self.instruction(ident);
         }
         todo!("implement directive parsing")
-    }
-
-    fn label(&self, ident: Identifier) -> Result<Line> {
-        Ok(Line::Label(ident))
     }
 
     fn instruction(&mut self, ident: Identifier) -> Result<Line> {
@@ -114,14 +108,14 @@ mod tests {
 
     #[test]
     fn parser_parse_returns_program_ast() {
-        let program = r#"
+        let program = "
         _start:
             li a0, 1
             li a1, 32
             li a2, 13
             li a7, 64
             ecall
-        "#;
+        ";
 
         let want = Program {
             lines: vec![

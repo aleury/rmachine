@@ -120,7 +120,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         match token.token_type {
             TokenType::Eof => break,
             TokenType::Illegal => {
-                panic!("illegal token: {:#?}", token);
+                panic!("illegal token: {token:#?}");
             }
             _ => tokens.push(token),
         }
@@ -134,6 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn tokenize_returns_tokens() {
         struct TestCase {
             program: String,
