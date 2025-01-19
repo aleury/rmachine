@@ -91,7 +91,7 @@ impl Parser {
                 self.expect(TokenType::Comma)?;
                 let symbol = self.identifier()?;
                 Instruction {
-                    name: name.to_string(),
+                    name,
                     operands: vec![rd, Operand::Symbol(symbol.0)],
                 }
             }
@@ -100,12 +100,12 @@ impl Parser {
                 self.expect(TokenType::Comma)?;
                 let imm = self.immediate()?;
                 Instruction {
-                    name: name.to_string(),
+                    name,
                     operands: vec![rd, imm],
                 }
             }
             "ecall" => Instruction {
-                name: name.to_string(),
+                name,
                 operands: vec![],
             },
             _ => todo!(),
