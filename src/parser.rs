@@ -150,7 +150,7 @@ mod tests {
             li a7, 64
             ecall
         helloworld:
-            .ascii \"Hello, World!\n\"
+            .ascii \"Hello World!\n\"
         ";
 
         let want = Program {
@@ -182,7 +182,7 @@ mod tests {
                     operands: vec![],
                 }),
                 Line::Label("helloworld".to_string()),
-                Line::Directive(Directive::Ascii("\"Hello, World!\n\"".into())),
+                Line::Directive(Directive::Ascii("\"Hello World!\n\"".into())),
             ],
         };
 
