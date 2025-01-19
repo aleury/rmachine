@@ -52,7 +52,7 @@ impl Parser {
             let ident = self.identifier()?;
             if self.matches(TokenType::Colon) {
                 self.advance();
-                return Ok(Line::Label(ident));
+                return Ok(Line::Label(ident.to_string()));
             }
             self.instruction(ident)
         } else if self.matches(TokenType::Dot) {
@@ -65,34 +65,34 @@ impl Parser {
     fn directive(&mut self) -> Result<Line> {
         self.expect(TokenType::Dot)?;
         let ident = self.identifier()?;
-        let directive = match ident.0.as_str() {
+        let directive = match ident.as_ref() {
             "globl" => {
                 let symbol = self.identifier()?;
-                Line::Directive(Directive::Global(symbol))
+                Directive::Global(symbol.to_string())
             }
             "section" => {
                 self.expect(TokenType::Dot)?;
                 let section = self.identifier()?;
-                Line::Directive(Directive::Section(section))
+                Directive::Section(format!(".{section}"))
             }
             "ascii" => {
                 let string = self.expect(TokenType::String)?;
-                Line::Directive(Directive::Ascii(string.lexeme))
+                Directive::Ascii(string.lexeme)
             }
             _ => todo!(),
         };
-        Ok(directive)
+        Ok(Line::Directive(directive))
     }
 
     fn instruction(&mut self, ident: Identifier) -> Result<Line> {
-        let instruction = match ident.0.as_str() {
+        let instruction = match ident.as_ref() {
             "la" => {
                 let rd = self.register()?;
                 self.expect(TokenType::Comma)?;
                 let symbol = self.identifier()?;
                 Instruction {
-                    name: ident,
-                    operands: vec![rd, Operand::Symbol(symbol)],
+                    name: ident.to_string(),
+                    operands: vec![rd, Operand::Symbol(symbol.0)],
                 }
             }
             "li" => {
@@ -100,12 +100,12 @@ impl Parser {
                 self.expect(TokenType::Comma)?;
                 let imm = self.immediate()?;
                 Instruction {
-                    name: ident,
+                    name: ident.to_string(),
                     operands: vec![rd, imm],
                 }
             }
             "ecall" => Instruction {
-                name: ident,
+                name: ident.to_string(),
                 operands: vec![],
             },
             _ => todo!(),
@@ -116,12 +116,12 @@ impl Parser {
 
     fn identifier(&mut self) -> Result<Identifier> {
         let token = self.expect(TokenType::Identifier)?;
-        Ok(Identifier(token.lexeme.clone()))
+        Ok(Identifier(token.lexeme))
     }
 
     fn register(&mut self) -> Result<Operand> {
         let ident = self.identifier()?;
-        Ok(Operand::Register(ident))
+        Ok(Operand::Register(ident.to_string()))
     }
 
     fn immediate(&mut self) -> Result<Operand> {
@@ -155,42 +155,33 @@ mod tests {
 
         let want = Program {
             lines: vec![
-                Line::Directive(Directive::Global(Identifier("_start".into()))),
-                Line::Directive(Directive::Section(Identifier("text".into()))),
-                Line::Label(Identifier("_start".into())),
+                Line::Directive(Directive::Global("_start".to_string())),
+                Line::Directive(Directive::Section(".text".to_string())),
+                Line::Label("_start".to_string()),
                 Line::Instruction(Instruction {
-                    name: Identifier("li".to_string()),
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(1)],
+                }),
+                Line::Instruction(Instruction {
+                    name: "la".to_string(),
                     operands: vec![
-                        Operand::Register(Identifier("a0".to_string())),
-                        Operand::Immediate(1),
+                        Operand::Register("a1".to_string()),
+                        Operand::Symbol("helloworld".to_string()),
                     ],
                 }),
                 Line::Instruction(Instruction {
-                    name: Identifier("la".into()),
-                    operands: vec![
-                        Operand::Register(Identifier("a1".into())),
-                        Operand::Symbol(Identifier("helloworld".into())),
-                    ],
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a2".to_string()), Operand::Immediate(13)],
                 }),
                 Line::Instruction(Instruction {
-                    name: Identifier("li".into()),
-                    operands: vec![
-                        Operand::Register(Identifier("a2".into())),
-                        Operand::Immediate(13),
-                    ],
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a7".to_string()), Operand::Immediate(64)],
                 }),
                 Line::Instruction(Instruction {
-                    name: Identifier("li".into()),
-                    operands: vec![
-                        Operand::Register(Identifier("a7".into())),
-                        Operand::Immediate(64),
-                    ],
-                }),
-                Line::Instruction(Instruction {
-                    name: Identifier("ecall".into()),
+                    name: "ecall".to_string(),
                     operands: vec![],
                 }),
-                Line::Label(Identifier("helloworld".to_string())),
+                Line::Label("helloworld".to_string()),
                 Line::Directive(Directive::Ascii("\"Hello, World!\n\"".into())),
             ],
         };

@@ -7,7 +7,7 @@ pub struct Program {
 
 #[derive(Debug, PartialEq)]
 pub enum Line {
-    Label(Identifier),
+    Label(String),
     Directive(Directive),
     Instruction(Instruction),
 }
@@ -30,19 +30,19 @@ impl AsRef<str> for Identifier {
 #[derive(Debug, PartialEq)]
 pub enum Directive {
     Ascii(String),
-    Global(Identifier),
-    Section(Identifier),
+    Global(String),
+    Section(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Instruction {
-    pub name: Identifier,
+    pub name: String,
     pub operands: Vec<Operand>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Operand {
     Immediate(u32),
-    Register(Identifier),
-    Symbol(Identifier),
+    Register(String),
+    Symbol(String),
 }
