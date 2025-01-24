@@ -1,12 +1,24 @@
 use anyhow::{bail, Result};
-
+use clap::Parser;
 use std::io::{stdin, stdout, Write};
 
 use rmachine::prelude::*;
 
+#[derive(Parser)]
+#[command(version, about, long_about=None)]
+struct Cli {
+    #[arg(required = true)]
+    path: String,
+}
+
 fn main() -> Result<()> {
+    let args = Cli::parse();
+
+    let path = args.path;
+    let bytes = std::fs::read(path)?;
+
     let mut m = Machine::new();
-    m.load_image(test_program());
+    m.load_image_from_bytes(&bytes);
     let mut input = String::new();
     loop {
         print_state(&m)?;
@@ -64,57 +76,4 @@ fn print_state(m: &Machine) -> Result<()> {
         Instruction::try_from(m.mem.get(m.pc))?
     );
     Ok(())
-}
-
-fn test_program() -> Vec<Word> {
-    vec![
-        Instruction {
-            opcode: Opcode::addi,
-            rd: Reg::a0,
-            rs1: Reg::zero,
-            rs2: Reg::zero,
-            imm: 1,
-        }
-        .into(),
-        Instruction {
-            opcode: Opcode::auipc,
-            rd: Reg::a1,
-            rs1: Reg::zero,
-            rs2: Reg::zero,
-            imm: 0,
-        }
-        .into(),
-        Instruction {
-            opcode: Opcode::addi,
-            rd: Reg::a1,
-            rs1: Reg::a1,
-            rs2: Reg::zero,
-            imm: 5,
-        }
-        .into(),
-        Instruction {
-            opcode: Opcode::addi,
-            rd: Reg::a2,
-            rs1: Reg::zero,
-            rs2: Reg::zero,
-            imm: 13,
-        }
-        .into(),
-        Instruction {
-            opcode: Opcode::addi,
-            rd: Reg::a7,
-            rs1: Reg::zero,
-            rs2: Reg::zero,
-            imm: 64,
-        }
-        .into(),
-        Instruction {
-            opcode: Opcode::ecall,
-            rd: Reg::zero,
-            rs1: Reg::zero,
-            rs2: Reg::zero,
-            imm: 0,
-        }
-        .into(),
-    ]
 }

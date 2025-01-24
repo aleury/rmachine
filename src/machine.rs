@@ -1,6 +1,6 @@
 use crate::asm::{Address, Instruction, Opcode, Reg, Word};
 use anyhow::{anyhow, bail, Result};
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, ops::Deref};
 
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Memory {
@@ -79,6 +79,13 @@ impl Machine {
 
     pub fn load_image(&mut self, image: Vec<Word>) {
         for (i, word) in image.into_iter().enumerate() {
+            self.mem.set(i as Address, word);
+        }
+    }
+
+    pub fn load_image_from_bytes(&mut self, bytes: &[u8]) {
+        for (i, chunk) in bytes[4..].chunks(4).enumerate() {
+            let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
             self.mem.set(i as Address, word);
         }
     }
@@ -164,6 +171,25 @@ mod tests {
     use super::*;
     use crate::asm;
     use claims::assert_err;
+    use tempfile::tempdir;
+
+    #[test]
+    fn load_image_from_bytes_loads_program_into_machine() {
+        let bytes = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
+        let mut machine = Machine::new();
+        machine.load_image_from_bytes(&bytes);
+
+        let word = Word::from(Instruction {
+            opcode: Opcode::addi,
+            rd: Reg::a0,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 1,
+        });
+
+        let got = machine.mem.get(0);
+        assert_eq!(got, 1049875);
+    }
 
     #[test]
     fn executes_lui_instruction_successfully() {

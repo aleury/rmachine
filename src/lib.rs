@@ -9,3 +9,5 @@ mod lexer;
 mod machine;
 mod parser;
 pub mod prelude;
+
+pub use asm::build_exe;

@@ -2,6 +2,7 @@ use anyhow::{anyhow, Ok, Result};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
+use std::path::Path;
 
 use crate::ast::{self, Directive, Line, Operand};
 use crate::lexer;
@@ -441,9 +442,43 @@ pub fn assemble(input: &str) -> Result<Vec<Word>> {
     Ok(obj.instructions.into_iter().map(Word::from).collect())
 }
 
+pub fn build_exe<I>(input: I, output: I) -> Result<()>
+where
+    I: AsRef<Path>,
+{
+    const HEADER: &[u8] = b"rme1";
+
+    let source = std::fs::read_to_string(input)?;
+    let program = assemble(&source)?;
+    let mut bytes = Vec::from(HEADER);
+    bytes.extend_from_slice(
+        &program
+            .into_iter()
+            .flat_map(u32::to_be_bytes)
+            .collect::<Vec<u8>>(),
+    );
+    std::fs::write(output, bytes)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
     use super::*;
+
+    #[test]
+    fn build_exe_fn_creates_an_executable_from_an_asm_source_file() {
+        let mut dir = tempdir().unwrap();
+        let mut exe_path = dir.path().to_owned();
+        exe_path.push("test");
+
+        build_exe("testdata/hello.s".into(), exe_path.clone()).unwrap();
+
+        let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
+        let got = std::fs::read(exe_path).unwrap();
+        assert_eq!(want, got, "wrong bytes");
+    }
 
     #[test]
     fn decodes_and_encodes_instructions_successfully() {
