@@ -442,6 +442,12 @@ pub fn assemble(input: &str) -> Result<Vec<Word>> {
     Ok(obj.instructions.into_iter().map(Word::from).collect())
 }
 
+/// Builds an executable from `input`.
+///
+/// # Errors
+///
+/// Returns any errors reading the input, assembling the program
+/// or writing the executable to disk.
 pub fn build_exe<I>(input: I, output: I) -> Result<()>
 where
     I: AsRef<Path>,
