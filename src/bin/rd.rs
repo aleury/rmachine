@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     let bytes = std::fs::read(args.path)?;
     for chunk in bytes[4..].chunks(4) {
         let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-        println!("{}", Instruction::try_from(word)?);
+        println!("{}", Instruction::from(word));
     }
 
     Ok(())

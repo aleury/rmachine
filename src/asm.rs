@@ -85,17 +85,15 @@ impl Display for Reg {
     }
 }
 
-impl TryFrom<Word> for Reg {
-    type Error = anyhow::Error;
-
-    fn try_from(word: Word) -> Result<Self> {
+impl From<Word> for Reg {
+    fn from(word: Word) -> Self {
         match word {
-            0b00000 => Ok(Reg::zero),
-            0b01010 => Ok(Reg::a0),
-            0b01011 => Ok(Reg::a1),
-            0b01100 => Ok(Reg::a2),
-            0b10001 => Ok(Reg::a7),
-            _ => Err(anyhow!("unknown register: {word:#?}")),
+            0b00000 => Reg::zero,
+            0b01010 => Reg::a0,
+            0b01011 => Reg::a1,
+            0b01100 => Reg::a2,
+            0b10001 => Reg::a7,
+            _ => panic!("unknown register: {word:#?}"),
         }
     }
 }
@@ -158,17 +156,14 @@ impl Display for Opcode {
     }
 }
 
-impl TryFrom<Word> for Opcode {
-    type Error = anyhow::Error;
-
-    fn try_from(word: Word) -> Result<Self> {
+impl From<Word> for Opcode {
+    fn from(word: Word) -> Self {
         match word {
-            0b000_0000 => Ok(Opcode::unimp),
-            0b001_0011 => Ok(Opcode::addi),
-            0b001_0111 => Ok(Opcode::auipc),
-            0b111_0011 => Ok(Opcode::ecall),
-            0b011_0111 => Ok(Opcode::lui),
-            _ => Err(anyhow!("unknown opcode: {word:#?}")),
+            0b001_0011 => Opcode::addi,
+            0b001_0111 => Opcode::auipc,
+            0b111_0011 => Opcode::ecall,
+            0b011_0111 => Opcode::lui,
+            _ => Opcode::unimp,
         }
     }
 }
@@ -221,52 +216,50 @@ impl Display for Instruction {
     }
 }
 
-impl TryFrom<Word> for Instruction {
-    type Error = anyhow::Error;
-
-    fn try_from(word: Word) -> Result<Self> {
-        let opcode = (word & Instruction::OP_MASK).try_into()?;
+impl From<Word> for Instruction {
+    fn from(word: Word) -> Self {
+        let opcode = (word & Instruction::OP_MASK).into();
         match opcode {
-            Opcode::unimp | Opcode::ecall => Ok(Instruction {
+            Opcode::unimp | Opcode::ecall => Instruction {
                 opcode,
                 rd: Reg::zero,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm: 0,
-            }),
+            },
             Opcode::addi => {
-                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
-                let rs1 = ((word >> Instruction::I_RS1) & Instruction::R_MASK).try_into()?;
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
+                let rs1 = ((word >> Instruction::I_RS1) & Instruction::R_MASK).into();
                 let imm = word >> Instruction::I_IMM;
-                Ok(Instruction {
+                Instruction {
                     opcode,
                     rd,
                     rs1,
                     rs2: Reg::zero,
                     imm,
-                })
+                }
             }
             Opcode::auipc => {
-                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
                 let imm = word >> Instruction::U_IMM;
-                Ok(Instruction {
+                Instruction {
                     opcode,
                     rd,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm,
-                })
+                }
             }
             Opcode::lui => {
-                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).try_into()?;
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
                 let imm = word >> Instruction::U_IMM;
-                Ok(Instruction {
+                Instruction {
                     opcode,
                     rd,
                     imm,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
-                })
+                }
             }
         }
     }
@@ -542,7 +535,7 @@ mod tests {
         ];
 
         for case in cases {
-            let got = Instruction::try_from(case.word).unwrap();
+            let got = Instruction::from(case.word);
             assert_eq!(
                 case.instruction, got,
                 "failed to decode instruction from word"

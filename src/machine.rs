@@ -90,9 +90,9 @@ impl Machine {
         }
     }
 
-    fn next(&mut self) -> Result<Instruction> {
+    fn next(&mut self) -> Instruction {
         let word = self.mem.get(self.pc);
-        Instruction::try_from(word)
+        Instruction::from(word)
     }
 
     fn write(&mut self, data: Word) {
@@ -119,7 +119,7 @@ impl Machine {
     /// unknown file descriptor is specified for a syscall.
     pub fn execute_next(&mut self) -> Result<()> {
         let pc = self.pc;
-        let instruction = self.next()?;
+        let instruction = self.next();
         self.pc += 4;
 
         let opcode = instruction.opcode;

@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     m.load_image_from_bytes(&bytes);
     let mut input = String::new();
     loop {
-        print_state(&m)?;
+        print_state(&m);
         print!("> ");
         stdout().flush()?;
         let n = stdin().read_line(&mut input)?;
@@ -32,13 +32,13 @@ fn main() -> Result<()> {
             "q" => break,
             "n" | "" => {
                 m.execute_next().or_else(|e| {
-                    print_state(&m)?;
+                    print_state(&m);
                     bail!(e)
                 })?;
             }
             "r" => {
                 m.run().or_else(|e| {
-                    print_state(&m)?;
+                    print_state(&m);
                     bail!(e)
                 })?;
             }
@@ -57,7 +57,7 @@ q - quit
 r - run to next breakpoint
 ? - help";
 
-fn print_state(m: &Machine) -> Result<()> {
+fn print_state(m: &Machine) {
     println!(
         "{:4} {:4} {:4} {:4} {:4} {:4} {:4} {:4} {:4}",
         "pc", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"
@@ -73,7 +73,6 @@ fn print_state(m: &Machine) -> Result<()> {
         m.regs.get(Reg::a5),
         m.regs.get(Reg::a6),
         m.regs.get(Reg::a7),
-        Instruction::try_from(m.mem.get(m.pc))?
+        Instruction::from(m.mem.get(m.pc)),
     );
-    Ok(())
 }
