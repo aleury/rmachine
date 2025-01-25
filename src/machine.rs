@@ -120,7 +120,7 @@ impl Machine {
     pub fn execute_next(&mut self) -> Result<()> {
         let pc = self.pc;
         let instruction = self.next()?;
-        self.pc += 1;
+        self.pc += 4;
 
         let opcode = instruction.opcode;
         let rd = instruction.rd;
@@ -286,7 +286,7 @@ mod tests {
                 rd: Reg::a1,
                 rs1: Reg::a1,
                 rs2: Reg::zero,
-                imm: 5,
+                imm: 20,
             },
             Instruction {
                 opcode: Opcode::addi,
@@ -311,12 +311,15 @@ mod tests {
             },
         ];
         let len = instructons.len();
+        let word_size = size_of::<Word>();
         for (i, instruction) in instructons.into_iter().enumerate() {
-            machine.mem.set(i as Address, instruction.into());
+            machine
+                .mem
+                .set((i * word_size) as Address, instruction.into());
         }
         let hello_world: Vec<Word> = "Hello World!\n".chars().map(|c| c as Word).collect();
         for (i, c) in hello_world.iter().enumerate() {
-            machine.mem.set((i + len) as Address, *c);
+            machine.mem.set((i + len * word_size) as Address, *c);
         }
 
         assert_err!(machine.run());

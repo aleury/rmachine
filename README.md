@@ -4,7 +4,7 @@
 
 # TODO
 
-- [ ] Fix pc numbering to increment by 4 bytes.
+- [x] Fix pc numbering to increment by 4 bytes.
 - [ ] Make Instruction "from" instead of "try_from", fallback to unimp
 - [ ] Implement ebreak
 - [ ] Run helloworld and print.
