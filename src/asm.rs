@@ -391,7 +391,7 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
     let mut instructions: Vec<Instruction> = Vec::new();
 
     for line in program.lines {
-        let address = instructions.len() as Address;
+        let address = (size_of::<Word>() * instructions.len()) as Address;
         match line {
             Line::Label(label) => symbols.add_label(label, address),
             Line::Directive(directive) => match directive {
@@ -412,7 +412,7 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
 
     // Resolve references
     for r in refs {
-        instructions[r.address as usize].imm = symbols
+        instructions[r.address as usize / size_of::<Word>()].imm = symbols
             .lookup(&r.name)
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
     }
@@ -568,7 +568,7 @@ mod tests {
                 rd: Reg::a0,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
-                imm: 1,
+                imm: 4,
             }],
         };
 
