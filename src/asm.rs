@@ -206,11 +206,13 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.opcode {
             Opcode::unimp | Opcode::ecall => write!(f, "{}", self.opcode),
-            Opcode::auipc => write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm),
-            _ => write!(
+            Opcode::auipc | Opcode::lui => {
+                write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm)
+            }
+            Opcode::addi => write!(
                 f,
-                "{} {}, {}, {}, 0x{:02x}",
-                self.opcode, self.rd, self.rs1, self.rs2, self.imm
+                "{} {}, {}, 0x{:02x}",
+                self.opcode, self.rd, self.rs1, self.imm
             ),
         }
     }
