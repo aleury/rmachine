@@ -1,6 +1,6 @@
 use crate::asm::{Address, Instruction, Opcode, Reg, Word};
 use anyhow::{anyhow, bail, Result};
-use std::{collections::HashMap, fmt::Display, ops::Deref};
+use std::{collections::HashMap, fmt::Display, io::Write};
 
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Memory {
@@ -60,22 +60,68 @@ impl<const N: usize> From<[(Reg, Word); N]> for Registers {
     }
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
-pub struct Machine {
+pub trait IO {
+    /// Writes data to a file descriptor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file descriptor is unknown.
+    fn write(&mut self, fd: u32, data: &[u8]) -> Result<usize>;
+}
+
+pub struct StdIO;
+
+impl IO for StdIO {
+    fn write(&mut self, fd: u32, data: &[u8]) -> Result<usize> {
+        let words: Vec<Word> = data
+            .chunks(4)
+            .map(|chunk| {
+                let mut bytes = [0; 4];
+                bytes.copy_from_slice(chunk);
+                Word::from_be_bytes(bytes)
+            })
+            .collect();
+        let string = words
+            .into_iter()
+            .filter_map(char::from_u32)
+            .collect::<String>()
+            .replace("\\n", "\n");
+        match fd {
+            1 => std::io::stdout()
+                .write(string.as_bytes())
+                .map_err(|err| anyhow!(err)),
+            _ => panic!("Unknown fd: {fd}"),
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Machine<T: IO> {
     pub pc: Word,
     pub mem: Memory,
     pub regs: Registers,
-    out: Vec<Word>,
+    io: T,
 }
 
-impl Machine {
+impl Default for Machine<StdIO> {
+    fn default() -> Self {
+        Self::new(StdIO)
+    }
+}
+
+impl<T: IO> Machine<T> {
     const SYSCALL_WRITE: u32 = 64;
     const SYSCALL_EXIT: u32 = 93;
     const FD_STDOUT: u32 = 1;
 
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(io: T) -> Self {
+        Self {
+            pc: Word::default(),
+            mem: Memory::default(),
+            regs: Registers::default(),
+            io,
+        }
     }
 
     pub fn load_image(&mut self, image: Vec<Word>) {
@@ -134,10 +180,6 @@ impl Machine {
         Instruction::from(word)
     }
 
-    fn write(&mut self, data: Word) {
-        self.out.push(data);
-    }
-
     /// Runs the machine until the next breakpoint or error.
     ///
     /// # Errors
@@ -178,20 +220,26 @@ impl Machine {
                 self.regs.set(rd, pc + (imm << 12));
             }
             Opcode::ecall => match self.regs.get(Reg::a7) {
-                Machine::SYSCALL_WRITE => {
+                Self::SYSCALL_WRITE => {
                     let fd = self.regs.get(Reg::a0);
                     let buf = self.regs.get(Reg::a1);
-                    let count = self.regs.get(Reg::a2);
+                    let len = self.regs.get(Reg::a2);
+                    let word_size = size_of::<Word>() as Address;
 
-                    for i in 0..count {
-                        let c = self.mem.get(buf + i);
-                        match fd {
-                            Machine::FD_STDOUT => self.out.push(c),
-                            _ => bail!("Unknown fd: {fd:04x} at pc={pc:04x}"),
+                    let mut data: Vec<u8> = Vec::new();
+                    for i in 0..len {
+                        let c = self.mem.get(buf + i * word_size);
+                        data.extend_from_slice(&Word::to_be_bytes(c));
+                    }
+
+                    match fd {
+                        Self::FD_STDOUT => {
+                            self.io.write(fd, &data);
                         }
+                        _ => bail!("Unknown fd: {fd:04x} at pc={pc:04x}"),
                     }
                 }
-                Machine::SYSCALL_EXIT => {
+                Self::SYSCALL_EXIT => {
                     let code = self.regs.get(Reg::a0);
                     std::process::exit(code.try_into().unwrap_or_else(|err| {
                         eprintln!("Exit code out of range: {err}");
@@ -215,10 +263,34 @@ mod tests {
     use claims::assert_err;
     use tempfile::tempdir;
 
+    struct TestIO {
+        writes: Vec<(u32, Vec<u8>)>,
+    }
+
+    impl TestIO {
+        fn new() -> Self {
+            Self { writes: Vec::new() }
+        }
+    }
+
+    impl IO for TestIO {
+        fn write(&mut self, fd: u32, data: &[u8]) -> Result<usize> {
+            let len = data.len();
+            self.writes.push((fd, data.to_vec()));
+            Ok(len)
+        }
+    }
+
+    impl Default for Machine<TestIO> {
+        fn default() -> Self {
+            Self::new(TestIO::new())
+        }
+    }
+
     #[test]
     fn load_image_from_bytes_loads_program_into_machine() {
         let bytes = vec![b'r', b'm', b'e', b'1', 0, 0, 0, 4, 0, 16, 5, 19, 0, 0, 0, 0];
-        let mut machine = Machine::new();
+        let mut machine = Machine::new(TestIO::new());
         machine.load_image_from_bytes(&bytes);
 
         let word = Word::from(Instruction {
@@ -235,7 +307,7 @@ mod tests {
 
     #[test]
     fn executes_lui_instruction_successfully() {
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(TestIO::new());
 
         let instruction = Instruction {
             opcode: Opcode::lui,
@@ -255,7 +327,7 @@ mod tests {
 
     #[test]
     fn executes_auipc_instruction_successfully() {
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(TestIO::new());
 
         let instruction = Instruction {
             opcode: Opcode::auipc,
@@ -275,7 +347,7 @@ mod tests {
 
     #[test]
     fn executes_addi_instruction_successfully() {
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(TestIO::new());
 
         let instruction = Instruction {
             opcode: Opcode::addi,
@@ -306,7 +378,7 @@ mod tests {
         // helloworld:
         //   .ascii "Hello World!\n"
 
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(TestIO::new());
 
         let instructons = [
             Instruction {
@@ -359,23 +431,26 @@ mod tests {
                 .mem
                 .set((i * word_size) as Address, instruction.into());
         }
+
+        let offset = len * word_size;
         let hello_world: Vec<Word> = "Hello World!\n".chars().map(|c| c as Word).collect();
         for (i, c) in hello_world.iter().enumerate() {
-            machine.mem.set((i + len * word_size) as Address, *c);
+            let addr = offset + (i * word_size);
+            machine.mem.set(addr as Address, *c);
         }
 
         assert_err!(machine.run());
 
-        let got = machine.out;
-
-        assert_eq!(got, hello_world);
+        let want_data = hello_world.into_iter().flat_map(u32::to_be_bytes).collect();
+        let result = machine.io.writes.first().unwrap();
+        assert_eq!(result, &(1, want_data));
     }
 
     #[test]
     fn add_immediate_1() {
         let image = asm::assemble("li a0, 1").unwrap();
 
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(TestIO::new());
         machine.load_image(image.text);
 
         assert_err!(machine.run());

@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     let path = args.path;
     let bytes = std::fs::read(path)?;
 
-    let mut m = Machine::new();
+    let mut m = Machine::default();
     m.load_image_from_bytes(&bytes)?;
     let mut input = String::new();
     loop {
@@ -57,7 +57,10 @@ q - quit
 r - run to next breakpoint
 ? - help";
 
-fn print_state(m: &Machine) {
+fn print_state<T>(m: &Machine<T>)
+where
+    T: IO,
+{
     println!(
         "{:4} {:4} {:4} {:4} {:4} {:4} {:4} {:4} {:4}",
         "pc", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"

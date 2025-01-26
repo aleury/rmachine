@@ -1,2 +1,2 @@
 pub use crate::asm::{Instruction, Opcode, Reg, Word};
-pub use crate::machine::Machine;
+pub use crate::machine::{Machine, StdIO, IO};
