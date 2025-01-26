@@ -32,7 +32,7 @@ fn main() -> Result<()> {
     offset += size_of::<Word>();
 
     // Read the text section.
-    println!(".text\n------");
+    println!(".text");
     let text_chunks = bytes[offset..offset + text_len as usize].chunks(4);
     for chunk in text_chunks {
         let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
     offset += size_of::<Word>();
 
     // Read the data section.
-    println!("\n.data\n------");
+    println!("\n.data");
     let data_chunks = bytes[offset..offset + data_len as usize].chunks(4);
     for chunk in data_chunks {
         let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
