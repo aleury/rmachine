@@ -18,7 +18,7 @@ fn main() -> Result<()> {
     let bytes = std::fs::read(path)?;
 
     let mut m = Machine::new();
-    m.load_image_from_bytes(&bytes);
+    m.load_image_from_bytes(&bytes)?;
     let mut input = String::new();
     loop {
         print_state(&m);

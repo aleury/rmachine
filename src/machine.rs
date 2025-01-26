@@ -19,7 +19,7 @@ impl Memory {
     fn read(&self, addr: Address, len: usize) -> Vec<Word> {
         let mut data = Vec::new();
         for offset in 0..len {
-            data.push(self.get(addr + offset as Word));
+            data.push(self.get(addr + (offset * 4) as Word));
         }
         data
     }
@@ -84,11 +84,49 @@ impl Machine {
         }
     }
 
-    pub fn load_image_from_bytes(&mut self, bytes: &[u8]) {
-        for (i, chunk) in bytes[4..].chunks(4).enumerate() {
+    /// Loads a program image from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the magic number is not found, or if the text or
+    /// data sections are not found.
+    pub fn load_image_from_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let mut offset = 0;
+
+        // Read the magic number.
+        let header = &bytes[offset..4];
+        offset += 4;
+        if header != b"rme1" {
+            bail!("Invalid magic number");
+        }
+
+        // Read the text section length.
+        let text_len = Word::from_be_bytes(bytes[offset..offset + 4].try_into()?);
+        offset += 4;
+
+        // Read the text section.
+        let text_chunks = bytes[offset..offset + text_len as usize].chunks(4);
+        for (i, chunk) in text_chunks.enumerate() {
             let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
             self.mem.set((i * size_of::<Word>()) as Address, word);
         }
+        offset += text_len as usize;
+
+        // Read the data section length.
+        let data_len = Word::from_be_bytes(bytes[offset..offset + 4].try_into()?);
+        offset += 4;
+
+        // Read the data section.
+        let mem_offset = (self.mem.inner.len() * size_of::<Word>()) as Address;
+        let data_chunks = bytes[offset..offset + data_len as usize].chunks(4);
+        for (i, chunk) in data_chunks.enumerate() {
+            let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            self.mem
+                .set(mem_offset + (i * size_of::<Word>()) as Address, word);
+        }
+        offset += data_len as usize;
+
+        Ok(())
     }
 
     fn next(&mut self) -> Instruction {
@@ -179,7 +217,7 @@ mod tests {
 
     #[test]
     fn load_image_from_bytes_loads_program_into_machine() {
-        let bytes = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
+        let bytes = vec![b'r', b'm', b'e', b'1', 0, 0, 0, 4, 0, 16, 5, 19, 0, 0, 0, 0];
         let mut machine = Machine::new();
         machine.load_image_from_bytes(&bytes);
 
@@ -329,6 +367,7 @@ mod tests {
         assert_err!(machine.run());
 
         let got = machine.out;
+
         assert_eq!(got, hello_world);
     }
 
@@ -337,7 +376,7 @@ mod tests {
         let image = asm::assemble("li a0, 1").unwrap();
 
         let mut machine = Machine::default();
-        machine.load_image(image);
+        machine.load_image(image.text);
 
         assert_err!(machine.run());
 

@@ -379,9 +379,10 @@ fn assemble_instruction(
 }
 
 #[derive(Debug, PartialEq)]
-struct Object {
-    data: Vec<Word>,
-    instructions: Vec<Instruction>,
+pub struct Object {
+    pub header: [u8; 4],
+    pub text: Vec<Word>,
+    pub data: Vec<Word>,
 }
 
 fn assemble_program(program: ast::Program) -> Result<Object> {
@@ -417,7 +418,13 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
     }
 
-    Ok(Object { data, instructions })
+    let obj = Object {
+        header: [b'r', b'm', b'e', b'1'],
+        text: instructions.into_iter().map(Word::from).collect(),
+        data,
+    };
+
+    Ok(obj)
 }
 
 /// Assembles `input`.
@@ -425,14 +432,14 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
 /// # Errors
 ///
 /// Returns any errors parsing the input.
-pub fn assemble(input: &str) -> Result<Vec<Word>> {
+pub fn assemble(input: &str) -> Result<Object> {
     let tokens = lexer::tokenize(input);
     let mut parser = Parser::new(tokens);
 
     let program = parser.parse()?;
     let obj = assemble_program(program)?;
 
-    Ok(obj.instructions.into_iter().map(Word::from).collect())
+    Ok(obj)
 }
 
 /// Builds an executable from `input`.
@@ -450,12 +457,27 @@ where
     let source = std::fs::read_to_string(input)?;
     let program = assemble(&source)?;
     let mut bytes = Vec::from(HEADER);
-    bytes.extend_from_slice(
-        &program
-            .into_iter()
-            .flat_map(u32::to_be_bytes)
-            .collect::<Vec<u8>>(),
-    );
+
+    // Write the text section first
+    let text_bytes = program
+        .text
+        .into_iter()
+        .flat_map(Word::to_be_bytes)
+        .collect::<Vec<u8>>();
+    let text_len = text_bytes.len() as u32;
+    bytes.extend_from_slice(&text_len.to_be_bytes());
+    bytes.extend_from_slice(&text_bytes);
+
+    // Write the data section
+    let data_bytes = program
+        .data
+        .into_iter()
+        .flat_map(u32::to_be_bytes)
+        .collect::<Vec<u8>>();
+    let data_len = data_bytes.len() as u32;
+    bytes.extend_from_slice(&data_len.to_be_bytes());
+    bytes.extend_from_slice(&data_bytes);
+
     std::fs::write(output, bytes)?;
     Ok(())
 }
@@ -474,7 +496,8 @@ mod tests {
 
         build_exe("testdata/hello.s".into(), exe_path.clone()).unwrap();
 
-        let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
+        // header + text section length + text section + data section length + data section
+        let want = vec![b'r', b'm', b'e', b'1', 0, 0, 0, 4, 0, 16, 5, 19, 0, 0, 0, 0];
         let got = std::fs::read(exe_path).unwrap();
         assert_eq!(want, got, "wrong bytes");
     }
@@ -562,14 +585,16 @@ mod tests {
         );
 
         let want = Object {
+            header: [b'r', b'm', b'e', b'1'],
             data: "Hello World!\n".chars().map(|c| c as Word).collect(),
-            instructions: vec![Instruction {
+            text: vec![Instruction {
                 opcode: Opcode::addi,
                 rd: Reg::a0,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm: 4,
-            }],
+            }
+            .into()],
         };
 
         let got = assemble_program(program).unwrap();
@@ -639,7 +664,7 @@ mod tests {
         for case in cases {
             let want: Vec<Word> = vec![case.want.into()];
             let got = assemble(&case.program).unwrap();
-            assert_eq!(want, got);
+            assert_eq!(want, got.text);
         }
     }
 
