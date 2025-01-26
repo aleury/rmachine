@@ -70,6 +70,7 @@ pub struct Machine {
 
 impl Machine {
     const SYSCALL_WRITE: u32 = 64;
+    const SYSCALL_EXIT: u32 = 93;
     const FD_STDOUT: u32 = 1;
 
     #[must_use]
@@ -79,14 +80,14 @@ impl Machine {
 
     pub fn load_image(&mut self, image: Vec<Word>) {
         for (i, word) in image.into_iter().enumerate() {
-            self.mem.set(i as Address, word);
+            self.mem.set((i * size_of::<Word>()) as Address, word);
         }
     }
 
     pub fn load_image_from_bytes(&mut self, bytes: &[u8]) {
         for (i, chunk) in bytes[4..].chunks(4).enumerate() {
             let word = Word::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            self.mem.set(i as Address, word);
+            self.mem.set((i * size_of::<Word>()) as Address, word);
         }
     }
 
@@ -120,7 +121,7 @@ impl Machine {
     pub fn execute_next(&mut self) -> Result<()> {
         let pc = self.pc;
         let instruction = self.next();
-        self.pc += 4;
+        self.pc += size_of::<Word>() as u32;
 
         let opcode = instruction.opcode;
         let rd = instruction.rd;
@@ -130,7 +131,7 @@ impl Machine {
 
         match opcode {
             Opcode::unimp => {
-                bail!("Illegal instruction at pc={:04x}", self.pc);
+                bail!("Illegal instruction at pc={pc:04x}");
             }
             Opcode::addi => {
                 self.regs.set(rd, rs1 + imm);
@@ -138,26 +139,29 @@ impl Machine {
             Opcode::auipc => {
                 self.regs.set(rd, pc + (imm << 12));
             }
-            Opcode::ecall => {
-                let syscall = self.regs.get(Reg::a7);
-                match syscall {
-                    Machine::SYSCALL_WRITE => {
-                        let fd = self.regs.get(Reg::a0);
-                        let buf = self.regs.get(Reg::a1);
-                        let count = self.regs.get(Reg::a2);
+            Opcode::ecall => match self.regs.get(Reg::a7) {
+                Machine::SYSCALL_WRITE => {
+                    let fd = self.regs.get(Reg::a0);
+                    let buf = self.regs.get(Reg::a1);
+                    let count = self.regs.get(Reg::a2);
 
-                        for i in 0..count {
-                            let c = self.mem.get(buf + i);
-                            match fd {
-                                Machine::FD_STDOUT => self.out.push(c),
-
-                                _ => bail!("Unknown fd: {fd:04x} at pc={:04x}", self.pc),
-                            }
+                    for i in 0..count {
+                        let c = self.mem.get(buf + i);
+                        match fd {
+                            Machine::FD_STDOUT => self.out.push(c),
+                            _ => bail!("Unknown fd: {fd:04x} at pc={pc:04x}"),
                         }
                     }
-                    _ => todo!(),
                 }
-            }
+                Machine::SYSCALL_EXIT => {
+                    let code = self.regs.get(Reg::a0);
+                    std::process::exit(code.try_into().unwrap_or_else(|err| {
+                        eprintln!("Exit code out of range: {err}");
+                        1
+                    }));
+                }
+                _ => todo!(),
+            },
             Opcode::lui => {
                 self.regs.set(rd, imm << 12);
             }

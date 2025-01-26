@@ -4,7 +4,8 @@ _start:
   li a2, 13
   li a7, 64
   ecall
-  ebreak
-
+  li a0, 0
+  li a7, 93
+  ecall
 helloworld:
   .ascii "Hello World!\n"
