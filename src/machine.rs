@@ -1,6 +1,6 @@
 use crate::asm::{Address, Instruction, Opcode, Reg, Word};
 use anyhow::{anyhow, bail, Result};
-use std::{collections::HashMap, fmt::Display, io::Write};
+use std::{char::REPLACEMENT_CHARACTER, collections::HashMap, fmt::Display};
 
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Memory {
@@ -61,37 +61,14 @@ impl<const N: usize> From<[(Reg, Word); N]> for Registers {
 }
 
 pub trait IO {
-    /// Writes data to a file descriptor.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file descriptor is unknown.
-    fn write(&mut self, fd: u32, data: &[u8]) -> Result<usize>;
+    fn write_string(&mut self, value: &str);
 }
 
 pub struct StdIO;
 
 impl IO for StdIO {
-    fn write(&mut self, fd: u32, data: &[u8]) -> Result<usize> {
-        let words: Vec<Word> = data
-            .chunks(4)
-            .map(|chunk| {
-                let mut bytes = [0; 4];
-                bytes.copy_from_slice(chunk);
-                Word::from_be_bytes(bytes)
-            })
-            .collect();
-        let string = words
-            .into_iter()
-            .filter_map(char::from_u32)
-            .collect::<String>()
-            .replace("\\n", "\n");
-        match fd {
-            1 => std::io::stdout()
-                .write(string.as_bytes())
-                .map_err(|err| anyhow!(err)),
-            _ => panic!("Unknown fd: {fd}"),
-        }
+    fn write_string(&mut self, value: &str) {
+        print!("{}", value.replace("\\n", "\n"));
     }
 }
 
@@ -105,7 +82,12 @@ pub struct Machine<T: IO> {
 
 impl Default for Machine<StdIO> {
     fn default() -> Self {
-        Self::new(StdIO)
+        Self {
+            pc: Word::default(),
+            mem: Memory::default(),
+            regs: Registers::default(),
+            io: StdIO,
+        }
     }
 }
 
@@ -226,18 +208,12 @@ impl<T: IO> Machine<T> {
                     let len = self.regs.get(Reg::a2);
                     let word_size = size_of::<Word>() as Address;
 
-                    let mut data: Vec<u8> = Vec::new();
-                    for i in 0..len {
-                        let c = self.mem.get(buf + i * word_size);
-                        data.extend_from_slice(&Word::to_be_bytes(c));
-                    }
-
-                    match fd {
-                        Self::FD_STDOUT => {
-                            self.io.write(fd, &data);
-                        }
-                        _ => bail!("Unknown fd: {fd:04x} at pc={pc:04x}"),
-                    }
+                    let words = self.mem.read(buf, len as usize);
+                    let string: String = words
+                        .into_iter()
+                        .map(|w| char::from_u32(w).unwrap_or(REPLACEMENT_CHARACTER))
+                        .collect();
+                    self.io.write_string(&string);
                 }
                 Self::SYSCALL_EXIT => {
                     let code = self.regs.get(Reg::a0);
@@ -264,26 +240,18 @@ mod tests {
     use tempfile::tempdir;
 
     struct TestIO {
-        writes: Vec<(u32, Vec<u8>)>,
+        out: String,
     }
 
     impl TestIO {
         fn new() -> Self {
-            Self { writes: Vec::new() }
+            Self { out: String::new() }
         }
     }
 
     impl IO for TestIO {
-        fn write(&mut self, fd: u32, data: &[u8]) -> Result<usize> {
-            let len = data.len();
-            self.writes.push((fd, data.to_vec()));
-            Ok(len)
-        }
-    }
-
-    impl Default for Machine<TestIO> {
-        fn default() -> Self {
-            Self::new(TestIO::new())
+        fn write_string(&mut self, value: &str) {
+            self.out.push_str(value);
         }
     }
 
@@ -441,9 +409,7 @@ mod tests {
 
         assert_err!(machine.run());
 
-        let want_data = hello_world.into_iter().flat_map(u32::to_be_bytes).collect();
-        let result = machine.io.writes.first().unwrap();
-        assert_eq!(result, &(1, want_data));
+        assert_eq!(machine.io.out, "Hello World!\n");
     }
 
     #[test]
