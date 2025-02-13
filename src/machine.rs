@@ -1,6 +1,11 @@
 use crate::asm::{Address, Instruction, Opcode, Reg, Word};
 use anyhow::{anyhow, bail, Result};
-use std::{char::REPLACEMENT_CHARACTER, collections::HashMap, fmt::Display};
+use std::{
+    char::REPLACEMENT_CHARACTER,
+    collections::HashMap,
+    fmt::Display,
+    io::{stdout, Stdout, Write},
+};
 
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Memory {
@@ -60,49 +65,55 @@ impl<const N: usize> From<[(Reg, Word); N]> for Registers {
     }
 }
 
-pub trait IO {
-    fn write_string(&mut self, value: &str);
+pub trait Sys: Write {}
+
+pub struct TermSys {
+    out: Stdout,
 }
 
-pub struct StdIO;
-
-impl IO for StdIO {
-    fn write_string(&mut self, value: &str) {
-        print!("{}", value.replace("\\n", "\n"));
+impl Default for TermSys {
+    fn default() -> Self {
+        Self { out: stdout() }
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Machine<T: IO> {
+impl Write for &mut TermSys {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.out.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Sys for &mut TermSys {}
+
+impl TermSys {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Default, Eq, PartialEq)]
+pub struct Machine {
     pub pc: Word,
     pub mem: Memory,
     pub regs: Registers,
-    io: T,
 }
 
-impl Default for Machine<StdIO> {
-    fn default() -> Self {
-        Self {
-            pc: Word::default(),
-            mem: Memory::default(),
-            regs: Registers::default(),
-            io: StdIO,
-        }
-    }
-}
-
-impl<T: IO> Machine<T> {
+impl Machine {
     const SYSCALL_WRITE: u32 = 64;
     const SYSCALL_EXIT: u32 = 93;
     const FD_STDOUT: u32 = 1;
 
     #[must_use]
-    pub fn new(io: T) -> Self {
+    pub fn new() -> Self {
         Self {
             pc: Word::default(),
             mem: Memory::default(),
             regs: Registers::default(),
-            io,
         }
     }
 
@@ -168,9 +179,10 @@ impl<T: IO> Machine<T> {
     ///
     /// Returns an error if an illegal instruction is encountered, or if an
     /// unknown file descriptor is specified for a syscall.
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self, mut sys: impl Sys) -> Result<()> {
+        let mysys = &mut sys;
         loop {
-            self.execute_next()?;
+            self.execute_next(mysys)?;
         }
     }
 
@@ -180,7 +192,7 @@ impl<T: IO> Machine<T> {
     ///
     /// Returns an error if an illegal instruction is encountered, or if an
     /// unknown file descriptor is specified for a syscall.
-    pub fn execute_next(&mut self) -> Result<()> {
+    pub fn execute_next(&mut self, mut sys: &mut impl Sys) -> Result<()> {
         let pc = self.pc;
         let instruction = self.next();
         self.pc += size_of::<Word>() as u32;
@@ -213,7 +225,7 @@ impl<T: IO> Machine<T> {
                         .into_iter()
                         .map(|w| char::from_u32(w).unwrap_or(REPLACEMENT_CHARACTER))
                         .collect();
-                    self.io.write_string(&string);
+                    write!(sys, "{string}")?;
                 }
                 Self::SYSCALL_EXIT => {
                     let code = self.regs.get(Reg::a0);
@@ -239,26 +251,32 @@ mod tests {
     use claims::assert_err;
     use tempfile::tempdir;
 
-    struct TestIO {
-        out: String,
+    struct TestSys {
+        out: Vec<u8>,
     }
 
-    impl TestIO {
-        fn new() -> Self {
-            Self { out: String::new() }
+    impl Write for &mut TestSys {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.out.write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
         }
     }
 
-    impl IO for TestIO {
-        fn write_string(&mut self, value: &str) {
-            self.out.push_str(value);
+    impl Sys for &mut TestSys {}
+
+    impl TestSys {
+        fn new() -> Self {
+            Self { out: Vec::new() }
         }
     }
 
     #[test]
     fn load_image_from_bytes_loads_program_into_machine() {
         let bytes = vec![b'r', b'm', b'e', b'1', 0, 0, 0, 4, 0, 16, 5, 19, 0, 0, 0, 0];
-        let mut machine = Machine::new(TestIO::new());
+        let mut machine = Machine::new();
         machine.load_image_from_bytes(&bytes);
 
         let word = Word::from(Instruction {
@@ -275,7 +293,7 @@ mod tests {
 
     #[test]
     fn executes_lui_instruction_successfully() {
-        let mut machine = Machine::new(TestIO::new());
+        let mut machine = Machine::new();
 
         let instruction = Instruction {
             opcode: Opcode::lui,
@@ -286,7 +304,7 @@ mod tests {
         };
         machine.mem.set(0, instruction.into());
 
-        machine.run();
+        machine.run(&mut TestSys::new());
 
         let want = 2 << 12;
         let got = machine.regs.get(Reg::a0);
@@ -295,7 +313,7 @@ mod tests {
 
     #[test]
     fn executes_auipc_instruction_successfully() {
-        let mut machine = Machine::new(TestIO::new());
+        let mut machine = Machine::new();
 
         let instruction = Instruction {
             opcode: Opcode::auipc,
@@ -306,7 +324,7 @@ mod tests {
         };
         machine.mem.set(0, instruction.into());
 
-        machine.run();
+        machine.run(&mut TestSys::new());
 
         let want = 2 << 12;
         let got = machine.regs.get(Reg::a0);
@@ -315,7 +333,7 @@ mod tests {
 
     #[test]
     fn executes_addi_instruction_successfully() {
-        let mut machine = Machine::new(TestIO::new());
+        let mut machine = Machine::new();
 
         let instruction = Instruction {
             opcode: Opcode::addi,
@@ -326,7 +344,7 @@ mod tests {
         };
         machine.mem.set(0, instruction.into());
 
-        machine.run();
+        machine.run(&mut TestSys::new());
 
         let want = 2;
         let got = machine.regs.get(Reg::a0);
@@ -346,7 +364,7 @@ mod tests {
         // helloworld:
         //   .ascii "Hello World!\n"
 
-        let mut machine = Machine::new(TestIO::new());
+        let mut machine = Machine::new();
 
         let instructons = [
             Instruction {
@@ -406,20 +424,20 @@ mod tests {
             let addr = offset + (i * word_size);
             machine.mem.set(addr as Address, *c);
         }
+        let mut sys = TestSys::new();
+        assert_err!(machine.run(&mut sys));
 
-        assert_err!(machine.run());
-
-        assert_eq!(machine.io.out, "Hello World!\n");
+        assert_eq!(sys.out, b"Hello World!\n");
     }
 
     #[test]
     fn add_immediate_1() {
         let image = asm::assemble("li a0, 1").unwrap();
 
-        let mut machine = Machine::new(TestIO::new());
+        let mut machine = Machine::new();
         machine.load_image(image.text);
 
-        assert_err!(machine.run());
+        assert_err!(machine.run(&mut TestSys::new()));
 
         let want = 1;
         let got = machine.regs.get(Reg::a0);
