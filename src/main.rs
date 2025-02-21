@@ -19,6 +19,7 @@ fn main() -> Result<()> {
 
     let mut m = Machine::default();
     m.load_image_from_bytes(&bytes)?;
+    let mut sys = TermSys::new();
     let mut input = String::new();
     loop {
         print_state(&m);
@@ -31,13 +32,14 @@ fn main() -> Result<()> {
         match input.trim_end() {
             "q" => break,
             "n" | "" => {
-                m.execute_next().or_else(|e| {
+                let mut mysys = &mut sys; // Yeah, I got problems
+                m.execute_next(&mut mysys).or_else(|e| {
                     print_state(&m);
                     bail!(e)
                 })?;
             }
             "r" => {
-                m.run().or_else(|e| {
+                m.run(&mut sys).or_else(|e| {
                     print_state(&m);
                     bail!(e)
                 })?;
@@ -57,10 +59,7 @@ q - quit
 r - run to next breakpoint
 ? - help";
 
-fn print_state<T>(m: &Machine<T>)
-where
-    T: IO,
-{
+fn print_state(m: &Machine) {
     println!(
         "{:4} {:4} {:4} {:4} {:4} {:4} {:4} {:4} {:4}",
         "pc", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"
