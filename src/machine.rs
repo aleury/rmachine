@@ -83,7 +83,7 @@ impl Write for &mut TermSys {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+        self.out.flush()
     }
 }
 
