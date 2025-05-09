@@ -4,9 +4,12 @@
 
 # TODO
 
-- [ ] Improve parser errors
-- [ ] Implement ebreak
-- [ ] Make machine output configurable, i.e. terminal, buffer, etc. "type state pattern"
+- [x] Improve parser errors
+- [x] Implement ebreak
+- [x] Make machine output configurable, i.e. terminal, buffer, etc. "type state pattern"
+- [x] Parse, assemble, and implement `lb`
+- [ ] Fix `load_image_from_bytes` for new exe format
+- [ ] Refactor `rd` to use `load_image_from_bytes`
 - [ ] Rename .ascii directive to .utf8
 
 # R-Machine

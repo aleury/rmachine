@@ -204,9 +204,6 @@ impl Machine {
         let imm = instruction.imm;
 
         match opcode {
-            Opcode::unimp => {
-                bail!("Illegal instruction at pc={pc:04x}");
-            }
             Opcode::add => {
                 self.regs.set(rd, rs1 + rs2);
             }
@@ -239,9 +236,17 @@ impl Machine {
                 }
                 _ => todo!(),
             },
+            Opcode::lb => {
+                let addr = rs1 + imm;
+                let value = self.mem.get(addr);
+                self.regs.set(rd, value);
+            }
             Opcode::lui => {
                 self.regs.set(rd, imm << 12);
-            }
+            },
+            Opcode::unimp => {
+                bail!("Illegal instruction at pc={pc:04x}");
+            },
         }
         Ok(())
     }

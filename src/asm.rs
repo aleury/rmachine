@@ -137,12 +137,13 @@ impl TryFrom<String> for Reg {
 #[allow(non_camel_case_types)]
 #[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
 pub enum Opcode {
-    unimp,
     add,
     addi,
     auipc,
-    lui,
     ecall,
+    lb,
+    lui,
+    unimp,
 }
 
 impl Display for Opcode {
@@ -151,12 +152,13 @@ impl Display for Opcode {
             f,
             "{:6}",
             match self {
-                Opcode::unimp => "unimp",
                 Opcode::add => "add",
                 Opcode::addi => "addi",
                 Opcode::auipc => "auipc",
-                Opcode::lui => "lui",
                 Opcode::ecall => "ecall",
+                Opcode::lb => "lb",
+                Opcode::lui => "lui",
+                Opcode::unimp => "unimp",
             }
         )
     }
@@ -183,6 +185,7 @@ impl From<Opcode> for Word {
             Opcode::addi => 0b001_0011,
             Opcode::auipc => 0b001_0111,
             Opcode::ecall => 0b111_0011,
+            Opcode::lb => 0b000_0011,
             Opcode::lui => 0b011_0111,
         }
     }
@@ -218,16 +221,21 @@ impl Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.opcode {
-            Opcode::unimp | Opcode::ecall => write!(f, "{}", self.opcode),
-            Opcode::auipc | Opcode::lui => {
-                write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm)
-            }
             Opcode::add => write!(f, "{} {}, {}, {}", self.opcode, self.rd, self.rs1, self.rs2),
             Opcode::addi => write!(
                 f,
                 "{} {}, {}, 0x{:02x}",
                 self.opcode, self.rd, self.rs1, self.imm
             ),
+            Opcode::auipc | Opcode::lui => {
+                write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm)
+            }
+            Opcode::lb => write!(
+                f,
+                "{} {}, 0x{:02x}({})",
+                self.opcode, self.rd, self.imm, self.rs1
+            ),
+            Opcode::unimp | Opcode::ecall => write!(f, "{}", self.opcode),
         }
     }
 }
@@ -236,13 +244,6 @@ impl From<Word> for Instruction {
     fn from(word: Word) -> Self {
         let opcode = (word & Instruction::OP_MASK).into();
         match opcode {
-            Opcode::unimp | Opcode::ecall => Instruction {
-                opcode,
-                rd: Reg::zero,
-                rs1: Reg::zero,
-                rs2: Reg::zero,
-                imm: 0,
-            },
             Opcode::add => {
                 let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
                 let rs1 = ((word >> Instruction::RS1) & Instruction::R_MASK).into();
@@ -256,7 +257,7 @@ impl From<Word> for Instruction {
                     imm: 0,
                 }
             }
-            Opcode::addi => {
+            Opcode::addi | Opcode::lb => {
                 let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
                 let rs1 = ((word >> Instruction::RS1) & Instruction::R_MASK).into();
                 let imm = word >> Instruction::I_IMM;
@@ -290,6 +291,13 @@ impl From<Word> for Instruction {
                     rs2: Reg::zero,
                 }
             }
+            Opcode::unimp | Opcode::ecall => Instruction {
+                opcode,
+                rd: Reg::zero,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm: 0,
+            },
         }
     }
 }
@@ -297,7 +305,6 @@ impl From<Word> for Instruction {
 impl From<Instruction> for Word {
     fn from(instruction: Instruction) -> Self {
         match instruction.opcode {
-            Opcode::unimp => 0,
             Opcode::add => {
                 let opcode: Word = instruction.opcode.into();
                 let rd: Word = instruction.rd.into();
@@ -313,7 +320,7 @@ impl From<Instruction> for Word {
                     | (rs2 << Instruction::RS2)
                     | (f7 << Instruction::R_F7)
             }
-            Opcode::addi => {
+            Opcode::addi | Opcode::lb => {
                 let opcode: Word = instruction.opcode.into();
                 let rd: Word = instruction.rd.into();
                 let f3: Word = 0b000;
@@ -334,6 +341,8 @@ impl From<Instruction> for Word {
                 opcode | (rd << Instruction::RD) | (imm << Instruction::U_IMM)
             }
             Opcode::ecall => instruction.opcode.into(),
+
+            Opcode::unimp => 0,
         }
     }
 }
@@ -417,6 +426,22 @@ fn assemble_instruction(
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm: 0,
+            }]
+        }
+        "lb" => {
+            assert_eq!(instr.operands.len(), 2, "expected 2 operands for lb");
+            let Operand::Register(ref rd) = instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::OffsetAddress { imm, ref register } = instr.operands[1] else {
+                return Err(anyhow!("expected symbol"));
+            };
+            vec![Instruction {
+                opcode: Opcode::lb,
+                rd: Reg::try_from(rd.to_string())?,
+                rs1: Reg::try_from(register.to_string())?,
+                rs2: Reg::zero,
+                imm,
             }]
         }
         "li" => {
