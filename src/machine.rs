@@ -117,9 +117,9 @@ impl Machine {
         }
     }
 
-    pub fn load_image(&mut self, image: Vec<Word>) {
-        for (i, word) in image.into_iter().enumerate() {
-            self.mem.set((i * size_of::<Word>()) as Address, word);
+    pub fn load_image(&mut self, image: &[Word]) {
+        for (i, word) in image.iter().enumerate() {
+            self.mem.set((i * size_of::<Word>()) as Address, *word);
         }
     }
 
@@ -200,12 +200,15 @@ impl Machine {
         let opcode = instruction.opcode;
         let rd = instruction.rd;
         let rs1 = self.regs.get(instruction.rs1);
-        let _rs2 = self.regs.get(instruction.rs2);
+        let rs2 = self.regs.get(instruction.rs2);
         let imm = instruction.imm;
 
         match opcode {
             Opcode::unimp => {
                 bail!("Illegal instruction at pc={pc:04x}");
+            }
+            Opcode::add => {
+                self.regs.set(rd, rs1 + rs2);
             }
             Opcode::addi => {
                 self.regs.set(rd, rs1 + imm);
@@ -435,12 +438,36 @@ mod tests {
         let image = asm::assemble("li a0, 1").unwrap();
 
         let mut machine = Machine::new();
-        machine.load_image(image.text);
+        machine.load_image(&image);
 
         assert_err!(machine.run(&mut TestSys::new()));
 
         let want = 1;
         let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got, "wrong a0: {want}, expected: {got}");
+    }
+
+    #[test]
+    fn strlen_program_counts_characters_in_a_string() {
+        let program = r#"
+            la     a0, mystr     # Load the address of mystr into a0
+            li     t0, 0         # i = 0
+        loop: # Start of for loop
+            add    t1, t0, a0    # Add the byte offset for str[i]
+            lb     t1, 0(t1)     # Dereference str[i]
+            beqz   t1, end       # if str[i] == 0, break for loop
+            addi   t0, t0, 1     # Add 1 to our iterator
+            j      loop          # Jump back to condition (1 backwards)
+        end: # End of for loop
+            ebreak
+
+        mystr:
+            .ascii "test\0"
+        "#;
+
+        let image = asm::assemble(program).unwrap();
+
+        let mut machine = Machine::new();
+        machine.load_image(&image);
     }
 }

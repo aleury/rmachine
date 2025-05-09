@@ -5,9 +5,12 @@ pub enum TokenType {
     Colon,
     Comma,
     Dot,
+    LParen,
+    RParen,
     Integer,
     Identifier,
     String,
+    Comment,
 }
 
 #[derive(Debug, PartialEq)]
@@ -29,26 +32,25 @@ struct Lexer {
     input: Vec<char>,
     pos: usize,
     next_pos: usize,
-    char: char,
+    char: Option<char>,
 }
 
 impl Lexer {
     fn new(input: &str) -> Self {
         let input: Vec<char> = input.chars().collect();
-        let char = input[0];
         Self {
             input,
             pos: 0,
-            next_pos: 1,
-            char,
+            next_pos: 0,
+            char: None,
         }
     }
 
-    fn peek_char(&self) -> char {
+    fn peek_char(&self) -> Option<char> {
         if self.next_pos >= self.input.len() {
-            '\0'
+            None
         } else {
-            self.input[self.next_pos]
+            Some(self.input[self.next_pos])
         }
     }
 
@@ -59,54 +61,78 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.char.is_ascii_whitespace() {
+        while self.char.is_some_and(|c| c.is_ascii_whitespace()) {
             self.read_char();
         }
     }
 
     fn next_token(&mut self) -> Token {
         self.skip_whitespace();
-        match self.char {
-            ':' => {
-                self.read_char();
-                Token::new(TokenType::Colon, ":")
-            }
-            ',' => {
-                self.read_char();
-                Token::new(TokenType::Comma, ",")
-            }
-            '.' => {
-                self.read_char();
-                Token::new(TokenType::Dot, ".")
-            }
-            'a'..='z' | '_' => {
-                let start = self.pos;
-                while self.char.is_ascii_alphanumeric() || self.char == '_' {
+        if let Some(ch) = self.char {
+            match ch {
+                '#' => {
                     self.read_char();
+                    self.skip_whitespace();
+                    let start = self.pos;
+                    while self.char.is_some_and(|c| c != '\n') {
+                        self.read_char();
+                    }
+                    let comment: String = self.input[start..self.pos].iter().collect();
+                    Token::new(TokenType::Comment, comment)
                 }
-                let ident: String = self.input[start..self.pos].iter().collect();
-                Token::new(TokenType::Identifier, ident)
-            }
-            '0'..='9' => {
-                let start = self.pos;
-                while self.char.is_ascii_digit() {
+                ':' => {
                     self.read_char();
+                    Token::new(TokenType::Colon, ":")
                 }
-                let lexeme = self.input[start..self.pos].iter().collect::<String>();
-                Token::new(TokenType::Integer, lexeme)
-            }
-            '"' => {
-                self.read_char(); // consume the opening quote
-                let start = self.pos;
-                while self.char != '"' {
+                ',' => {
                     self.read_char();
+                    Token::new(TokenType::Comma, ",")
                 }
-                let lexeme = self.input[start..self.pos].iter().collect::<String>();
-                self.read_char(); // consume the closing quote
-                Token::new(TokenType::String, lexeme)
+                '.' => {
+                    self.read_char();
+                    Token::new(TokenType::Dot, ".")
+                }
+                '(' => {
+                    self.read_char();
+                    Token::new(TokenType::LParen, "(")
+                }
+                ')' => {
+                    self.read_char();
+                    Token::new(TokenType::RParen, ")")
+                }
+                'a'..='z' | '_' => {
+                    let start = self.pos;
+                    while self
+                        .char
+                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+                    {
+                        self.read_char();
+                    }
+                    let ident: String = self.input[start..self.pos].iter().collect();
+                    Token::new(TokenType::Identifier, ident)
+                }
+                '0'..='9' => {
+                    let start = self.pos;
+                    while self.char.is_some_and(|c| c.is_ascii_digit()) {
+                        self.read_char();
+                    }
+                    let lexeme = self.input[start..self.pos].iter().collect::<String>();
+                    Token::new(TokenType::Integer, lexeme)
+                }
+                '"' => {
+                    self.read_char(); // consume the opening quote
+                    let start = self.pos;
+                    while self.char.is_some_and(|c| c != '"') {
+                        self.read_char();
+                    }
+                    let lexeme = self.input[start..self.pos].iter().collect::<String>();
+                    self.read_char(); // consume the closing quote
+                    Token::new(TokenType::String, lexeme)
+                }
+                _ => Token::new(TokenType::Illegal, ch),
             }
-            '\0' => Token::new(TokenType::Eof, ""),
-            _ => Token::new(TokenType::Illegal, self.char),
+        } else {
+            Token::new(TokenType::Eof, "")
         }
     }
 }
@@ -114,6 +140,7 @@ impl Lexer {
 pub fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens: Vec<Token> = vec![];
     let mut lexer = Lexer::new(input);
+    lexer.read_char();
 
     loop {
         let token = lexer.next_token();
@@ -141,6 +168,85 @@ mod tests {
             want: Vec<Token>,
         }
         let cases = [
+            TestCase {
+                program: "lb t0 0(t0)".to_string(),
+                want: vec![
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "lb".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "t0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::LParen,
+                        lexeme: "(".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "t0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::RParen,
+                        lexeme: ")".to_string(),
+                    },
+                ],
+            },
+            TestCase {
+                program: "# this is a comment\nli a0, 42".to_string(),
+                want: vec![
+                    Token {
+                        token_type: TokenType::Comment,
+                        lexeme: "this is a comment".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "42".to_string(),
+                    },
+                ],
+            },
+            TestCase {
+                program: "li a0, 42 # this is a comment".to_string(),
+                want: vec![
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "42".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Comment,
+                        lexeme: "this is a comment".to_string(),
+                    },
+                ],
+            },
             TestCase {
                 program: ".ascii \"Hello World!\n\"".to_string(),
                 want: vec![

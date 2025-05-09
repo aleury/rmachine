@@ -57,8 +57,13 @@ impl Parser {
             self.instruction(ident.to_string())
         } else if self.matches(TokenType::Dot) {
             self.directive()
+        } else if self.matches(TokenType::Comment) {
+            self.comment()
         } else {
-            Err(anyhow!("expected identifier or directive"))
+            let curr = self.tokens.peek();
+            Err(anyhow!(
+                "expected identifier or directive, but got {curr:#?}"
+            ))
         }
     }
 
@@ -86,6 +91,37 @@ impl Parser {
 
     fn instruction(&mut self, name: String) -> Result<Line> {
         let instruction = match name.as_str() {
+            "add" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let rs1 = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let rs2 = self.register()?;
+                Instruction {
+                    name,
+                    operands: vec![rd, rs1, rs2],
+                }
+            }
+            "addi" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let rs1 = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let imm = self.immediate()?;
+                Instruction {
+                    name,
+                    operands: vec![rd, rs1, Operand::Immediate(imm)],
+                }
+            }
+            "beqz" => {
+                let rs1 = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let symbol = self.identifier()?;
+                Instruction {
+                    name,
+                    operands: vec![rs1, Operand::Symbol(symbol.0)],
+                }
+            }
             "la" => {
                 let rd = self.register()?;
                 self.expect(TokenType::Comma)?;
@@ -95,23 +131,53 @@ impl Parser {
                     operands: vec![rd, Operand::Symbol(symbol.0)],
                 }
             }
+            "lb" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let imm = self.immediate()?;
+                self.expect(TokenType::LParen)?;
+                let rs = self.identifier()?;
+                self.expect(TokenType::RParen)?;
+                Instruction {
+                    name,
+                    operands: vec![
+                        rd,
+                        Operand::OffsetAddress {
+                            imm,
+                            register: rs.0,
+                        },
+                    ],
+                }
+            }
             "li" => {
                 let rd = self.register()?;
                 self.expect(TokenType::Comma)?;
                 let imm = self.immediate()?;
                 Instruction {
                     name,
-                    operands: vec![rd, imm],
+                    operands: vec![rd, Operand::Immediate(imm)],
                 }
             }
-            "ecall" => Instruction {
+            "ebreak" | "ecall" => Instruction {
                 name,
                 operands: vec![],
             },
-            _ => todo!(),
+            "j" => {
+                let symbol = self.identifier()?;
+                Instruction {
+                    name,
+                    operands: vec![Operand::Symbol(symbol.0)],
+                }
+            }
+            _ => todo!("Implement {name}"),
         };
 
         Ok(Line::Instruction(instruction))
+    }
+
+    fn comment(&mut self) -> Result<Line> {
+        let token = self.expect(TokenType::Comment)?;
+        Ok(Line::Comment(token.lexeme))
     }
 
     fn identifier(&mut self) -> Result<Identifier> {
@@ -124,11 +190,10 @@ impl Parser {
         Ok(Operand::Register(ident.to_string()))
     }
 
-    fn immediate(&mut self) -> Result<Operand> {
+    fn immediate(&mut self) -> Result<u32> {
         self.expect(TokenType::Integer)?
             .lexeme
             .parse()
-            .map(Operand::Immediate)
             .map_err(|_| anyhow!("expected to parse integer"))
     }
 }
@@ -137,6 +202,7 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::lexer;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn parser_parse_returns_program_ast() {
@@ -144,11 +210,18 @@ mod tests {
         .globl _start
         .section .text
         _start:
-            li a0, 1
+            li a0, 1 # set a0 to 1
             la a1, helloworld
             li a2, 13
             li a7, 64
+            lb t0, 0(t0)
+            beqz t0, end
+            addi t0, t0, 1
+            add t1, t0, a0
+            j loop
             ecall
+        end:
+            ebreak
         helloworld:
             .ascii \"Hello World!\n\"
         ";
@@ -162,6 +235,7 @@ mod tests {
                     name: "li".to_string(),
                     operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(1)],
                 }),
+                Line::Comment("set a0 to 1".to_string()),
                 Line::Instruction(Instruction {
                     name: "la".to_string(),
                     operands: vec![
@@ -178,7 +252,49 @@ mod tests {
                     operands: vec![Operand::Register("a7".to_string()), Operand::Immediate(64)],
                 }),
                 Line::Instruction(Instruction {
+                    name: "lb".to_string(),
+                    operands: vec![
+                        Operand::Register("t0".to_string()),
+                        Operand::OffsetAddress {
+                            imm: 0,
+                            register: "t0".to_string(),
+                        },
+                    ],
+                }),
+                Line::Instruction(Instruction {
+                    name: "beqz".to_string(),
+                    operands: vec![
+                        Operand::Register("t0".to_string()),
+                        Operand::Symbol("end".to_string()),
+                    ],
+                }),
+                Line::Instruction(Instruction {
+                    name: "addi".to_string(),
+                    operands: vec![
+                        Operand::Register("t0".to_string()),
+                        Operand::Register("t0".to_string()),
+                        Operand::Immediate(1),
+                    ],
+                }),
+                Line::Instruction(Instruction {
+                    name: "add".to_string(),
+                    operands: vec![
+                        Operand::Register("t1".to_string()),
+                        Operand::Register("t0".to_string()),
+                        Operand::Register("a0".to_string()),
+                    ],
+                }),
+                Line::Instruction(Instruction {
+                    name: "j".to_string(),
+                    operands: vec![Operand::Symbol("loop".to_string())],
+                }),
+                Line::Instruction(Instruction {
                     name: "ecall".to_string(),
+                    operands: vec![],
+                }),
+                Line::Label("end".to_string()),
+                Line::Instruction(Instruction {
+                    name: "ebreak".to_string(),
                     operands: vec![],
                 }),
                 Line::Label("helloworld".to_string()),

@@ -102,11 +102,13 @@ impl From<Reg> for Word {
     fn from(register_id: Reg) -> Self {
         match register_id {
             Reg::zero => 0b00000,
+            Reg::t0 => 0b00101,
+            Reg::t1 => 0b00110,
             Reg::a0 => 0b01010,
             Reg::a1 => 0b01011,
             Reg::a2 => 0b01100,
             Reg::a7 => 0b10001,
-            _ => todo!(),
+            _ => todo!("Implement From<Reg>: {register_id}"),
         }
     }
 }
@@ -117,6 +119,8 @@ impl TryFrom<String> for Reg {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.as_str() {
             "zero" => Ok(Reg::zero),
+            "t0" => Ok(Reg::t0),
+            "t1" => Ok(Reg::t1),
             "a0" => Ok(Reg::a0),
             "a1" => Ok(Reg::a1),
             "a2" => Ok(Reg::a2),
@@ -134,6 +138,7 @@ impl TryFrom<String> for Reg {
 #[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
 pub enum Opcode {
     unimp,
+    add,
     addi,
     auipc,
     lui,
@@ -147,6 +152,7 @@ impl Display for Opcode {
             "{:6}",
             match self {
                 Opcode::unimp => "unimp",
+                Opcode::add => "add",
                 Opcode::addi => "addi",
                 Opcode::auipc => "auipc",
                 Opcode::lui => "lui",
@@ -159,6 +165,7 @@ impl Display for Opcode {
 impl From<Word> for Opcode {
     fn from(word: Word) -> Self {
         match word {
+            0b011_0011 => Opcode::add,
             0b001_0011 => Opcode::addi,
             0b001_0111 => Opcode::auipc,
             0b111_0011 => Opcode::ecall,
@@ -172,6 +179,7 @@ impl From<Opcode> for Word {
     fn from(value: Opcode) -> Self {
         match value {
             Opcode::unimp => 0b000_0000,
+            Opcode::add => 0b011_0011,
             Opcode::addi => 0b001_0011,
             Opcode::auipc => 0b001_0111,
             Opcode::ecall => 0b111_0011,
@@ -190,12 +198,17 @@ pub struct Instruction {
 }
 
 impl Instruction {
+    // funct offsets
+    const F3: u32 = 12;
+    const R_F7: u32 = 25;
+
+    // register offsets
     const RD: u32 = 7;
+    const RS1: u32 = 15;
+    const RS2: u32 = 20;
 
-    const I_F3: u32 = 12;
-    const I_RS1: u32 = 15;
+    // immediate offsets
     const I_IMM: u32 = 20;
-
     const U_IMM: u32 = 12;
 
     const OP_MASK: u32 = 0b0111_1111;
@@ -209,6 +222,7 @@ impl Display for Instruction {
             Opcode::auipc | Opcode::lui => {
                 write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm)
             }
+            Opcode::add => write!(f, "{} {}, {}, {}", self.opcode, self.rd, self.rs1, self.rs2),
             Opcode::addi => write!(
                 f,
                 "{} {}, {}, 0x{:02x}",
@@ -229,9 +243,22 @@ impl From<Word> for Instruction {
                 rs2: Reg::zero,
                 imm: 0,
             },
+            Opcode::add => {
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
+                let rs1 = ((word >> Instruction::RS1) & Instruction::R_MASK).into();
+                let rs2 = ((word >> Instruction::RS2) & Instruction::R_MASK).into();
+
+                Instruction {
+                    opcode,
+                    rd,
+                    rs1,
+                    rs2,
+                    imm: 0,
+                }
+            }
             Opcode::addi => {
                 let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
-                let rs1 = ((word >> Instruction::I_RS1) & Instruction::R_MASK).into();
+                let rs1 = ((word >> Instruction::RS1) & Instruction::R_MASK).into();
                 let imm = word >> Instruction::I_IMM;
                 Instruction {
                     opcode,
@@ -271,6 +298,21 @@ impl From<Instruction> for Word {
     fn from(instruction: Instruction) -> Self {
         match instruction.opcode {
             Opcode::unimp => 0,
+            Opcode::add => {
+                let opcode: Word = instruction.opcode.into();
+                let rd: Word = instruction.rd.into();
+                let f3: Word = 0b000;
+                let rs1: Word = instruction.rs1.into();
+                let rs2: Word = instruction.rs2.into();
+                let f7: Word = 0b000;
+
+                opcode
+                    | (rd << Instruction::RD)
+                    | (f3 << Instruction::F3)
+                    | (rs1 << Instruction::RS1)
+                    | (rs2 << Instruction::RS2)
+                    | (f7 << Instruction::R_F7)
+            }
             Opcode::addi => {
                 let opcode: Word = instruction.opcode.into();
                 let rd: Word = instruction.rd.into();
@@ -280,8 +322,8 @@ impl From<Instruction> for Word {
 
                 opcode
                     | (rd << Instruction::RD)
-                    | (f3 << Instruction::I_F3)
-                    | (rs1 << Instruction::I_RS1)
+                    | (f3 << Instruction::F3)
+                    | (rs1 << Instruction::RS1)
                     | (imm << Instruction::I_IMM)
             }
             Opcode::auipc | Opcode::lui => {
@@ -328,6 +370,35 @@ fn assemble_instruction(
     symbols: &mut SymbolTable,
 ) -> Result<Vec<Instruction>> {
     let instructions = match instr.name.as_ref() {
+        "add" => {
+            assert_eq!(instr.operands.len(), 3, "expected 3 operands for add");
+            let Operand::Register(rd) = &instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Register(rs1) = &instr.operands[1] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Register(rs2) = &instr.operands[2] else {
+                return Err(anyhow!("expected register"));
+            };
+            vec![Instruction {
+                opcode: Opcode::add,
+                rd: Reg::try_from(rd.to_string())?,
+                rs1: Reg::try_from(rs1.to_string())?,
+                rs2: Reg::try_from(rs2.to_string())?,
+                imm: 0,
+            }]
+        }
+        "ecall" => {
+            assert_eq!(instr.operands.len(), 0, "expected 0 operands for ecall");
+            vec![Instruction {
+                opcode: Opcode::ecall,
+                rd: Reg::zero,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm: 0,
+            }]
+        }
         "la" => {
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for la");
             let Operand::Register(ref rd) = instr.operands[0] else {
@@ -364,30 +435,15 @@ fn assemble_instruction(
                 imm,
             }]
         }
-        "ecall" => {
-            assert_eq!(instr.operands.len(), 0, "expected 0 operands for ecall");
-            vec![Instruction {
-                opcode: Opcode::ecall,
-                rd: Reg::zero,
-                rs1: Reg::zero,
-                rs2: Reg::zero,
-                imm: 0,
-            }]
-        }
-        _ => todo!(),
+        _ => todo!("Assemble Instruciton: {}", instr.name),
     };
 
     Ok(instructions)
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Object {
-    pub header: [u8; 4],
-    pub text: Vec<Word>,
-    pub data: Vec<Word>,
-}
+pub type Image = Vec<Word>;
 
-fn assemble_program(program: ast::Program) -> Result<Object> {
+fn assemble_program(program: ast::Program) -> Result<Image> {
     let mut refs: Vec<Ref> = Vec::new();
     let mut symbols = SymbolTable::new();
     let mut data: Vec<Word> = Vec::new();
@@ -396,6 +452,7 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
     for line in program.lines {
         let address = (size_of::<Word>() * instructions.len()) as Address;
         match line {
+            Line::Comment(_) => {}
             Line::Label(label) => symbols.add_label(label, address),
             Line::Directive(directive) => match directive {
                 Directive::Ascii(string) => {
@@ -420,13 +477,10 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
     }
 
-    let obj = Object {
-        header: [b'r', b'm', b'e', b'1'],
-        text: instructions.into_iter().map(Word::from).collect(),
-        data,
-    };
+    let mut image: Vec<Word> = instructions.into_iter().map(Word::from).collect();
+    image.extend_from_slice(&data);
 
-    Ok(obj)
+    Ok(image)
 }
 
 /// Assembles `input`.
@@ -434,7 +488,7 @@ fn assemble_program(program: ast::Program) -> Result<Object> {
 /// # Errors
 ///
 /// Returns any errors parsing the input.
-pub fn assemble(input: &str) -> Result<Object> {
+pub fn assemble(input: &str) -> Result<Image> {
     let tokens = lexer::tokenize(input);
     let mut parser = Parser::new(tokens);
 
@@ -450,35 +504,13 @@ pub fn assemble(input: &str) -> Result<Object> {
 ///
 /// Returns any errors reading the input, assembling the program
 /// or writing the executable to disk.
-pub fn build_exe<I>(input: I, output: I) -> Result<()>
-where
-    I: AsRef<Path>,
-{
+pub fn build_exe(input: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<()> {
     const HEADER: &[u8] = b"rme1";
 
     let source = std::fs::read_to_string(input)?;
-    let program = assemble(&source)?;
+    let image = assemble(&source)?;
     let mut bytes = Vec::from(HEADER);
-
-    // Write the text section first
-    let text_bytes = program
-        .text
-        .into_iter()
-        .flat_map(Word::to_be_bytes)
-        .collect::<Vec<u8>>();
-    let text_len = text_bytes.len() as u32;
-    bytes.extend_from_slice(&text_len.to_be_bytes());
-    bytes.extend_from_slice(&text_bytes);
-
-    // Write the data section
-    let data_bytes = program
-        .data
-        .into_iter()
-        .flat_map(u32::to_be_bytes)
-        .collect::<Vec<u8>>();
-    let data_len = data_bytes.len() as u32;
-    bytes.extend_from_slice(&data_len.to_be_bytes());
-    bytes.extend_from_slice(&data_bytes);
+    bytes.extend(image.into_iter().flat_map(Word::to_be_bytes));
 
     std::fs::write(output, bytes)?;
     Ok(())
@@ -496,10 +528,10 @@ mod tests {
         let mut exe_path = dir.path().to_owned();
         exe_path.push("test");
 
-        build_exe("testdata/hello.s".into(), exe_path.clone()).unwrap();
+        build_exe("testdata/hello.s", exe_path.clone()).unwrap();
 
         // header + text section length + text section + data section length + data section
-        let want = vec![b'r', b'm', b'e', b'1', 0, 0, 0, 4, 0, 16, 5, 19, 0, 0, 0, 0];
+        let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
         let got = std::fs::read(exe_path).unwrap();
         assert_eq!(want, got, "wrong bytes");
     }
@@ -586,18 +618,9 @@ mod tests {
             ",
         );
 
-        let want = Object {
-            header: [b'r', b'm', b'e', b'1'],
-            data: "Hello World!\n".chars().map(|c| c as Word).collect(),
-            text: vec![Instruction {
-                opcode: Opcode::addi,
-                rd: Reg::a0,
-                rs1: Reg::zero,
-                rs2: Reg::zero,
-                imm: 4,
-            }
-            .into()],
-        };
+        let mut want: Vec<Word> = vec![
+            4195603, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 10,
+        ];
 
         let got = assemble_program(program).unwrap();
         assert_eq!(want, got);
@@ -652,6 +675,16 @@ mod tests {
                 },
             },
             TestCase {
+                program: "li t0, 64".into(),
+                want: Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::t0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 64,
+                },
+            },
+            TestCase {
                 program: "ecall".into(),
                 want: Instruction {
                     opcode: Opcode::ecall,
@@ -661,12 +694,22 @@ mod tests {
                     imm: 0,
                 },
             },
+            TestCase {
+                program: "add t1, t0, a0".into(),
+                want: Instruction {
+                    opcode: Opcode::add,
+                    rd: Reg::t1,
+                    rs1: Reg::t0,
+                    rs2: Reg::a0,
+                    imm: 0,
+                },
+            },
         ];
 
         for case in cases {
             let want: Vec<Word> = vec![case.want.into()];
             let got = assemble(&case.program).unwrap();
-            assert_eq!(want, got.text);
+            assert_eq!(want, got);
         }
     }
 

@@ -4,11 +4,10 @@
 
 # TODO
 
-- [x] Fix pc numbering to increment by 4 bytes.
-- [x] Make Instruction "from" instead of "try_from", fallback to unimp
-- [x] Run helloworld and print.
+- [ ] Improve parser errors
 - [ ] Implement ebreak
 - [ ] Make machine output configurable, i.e. terminal, buffer, etc. "type state pattern"
+- [ ] Rename .ascii directive to .utf8
 
 # R-Machine
 
