@@ -460,7 +460,7 @@ fn assemble_instruction(
                 imm,
             }]
         }
-        _ => todo!("Assemble Instruciton: {}", instr.name),
+        _ => todo!("Assemble Instruction: {}", instr.name),
     };
 
     Ok(instructions)
