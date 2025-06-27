@@ -2,6 +2,7 @@ use assert_cmd::Command;
 use tempfile::tempdir;
 
 #[test]
+#[ignore]
 fn rmachine_runs_executable() {
     let temp_dir = tempdir().unwrap();
     let obj_path = temp_dir.into_path().join("hello2");

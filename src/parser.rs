@@ -113,13 +113,15 @@ impl Parser {
                     operands: vec![rd, rs1, Operand::Immediate(imm)],
                 }
             }
-            "beqz" => {
+            "beq" => {
                 let rs1 = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let rs2 = self.register()?;
                 self.expect(TokenType::Comma)?;
                 let symbol = self.identifier()?;
                 Instruction {
                     name,
-                    operands: vec![rs1, Operand::Symbol(symbol.0)],
+                    operands: vec![rs1, rs2, Operand::Symbol(symbol.0)],
                 }
             }
             "la" => {
@@ -215,7 +217,7 @@ mod tests {
             li a2, 13
             li a7, 64
             lb t0, 0(t0)
-            beqz t0, end
+            beq t0, zero, end
             addi t0, t0, 1
             add t1, t0, a0
             j loop
@@ -262,9 +264,10 @@ mod tests {
                     ],
                 }),
                 Line::Instruction(Instruction {
-                    name: "beqz".to_string(),
+                    name: "beq".to_string(),
                     operands: vec![
                         Operand::Register("t0".to_string()),
+                        Operand::Register("zero".to_string()),
                         Operand::Symbol("end".to_string()),
                     ],
                 }),

@@ -213,6 +213,9 @@ impl Machine {
             Opcode::auipc => {
                 self.regs.set(rd, pc + (imm << 12));
             }
+            Opcode::beq => {
+                todo!("implement beq")
+            }
             Opcode::ecall => match self.regs.get(Reg::a7) {
                 Self::SYSCALL_WRITE => {
                     let fd = self.regs.get(Reg::a0);
@@ -236,6 +239,9 @@ impl Machine {
                 }
                 _ => todo!(),
             },
+            Opcode::jal => {
+                todo!("implement jal")
+            }
             Opcode::lb => {
                 let addr = rs1 + imm;
                 let value = self.mem.get(addr);
@@ -243,10 +249,10 @@ impl Machine {
             }
             Opcode::lui => {
                 self.regs.set(rd, imm << 12);
-            },
+            }
             Opcode::unimp => {
                 bail!("Illegal instruction at pc={pc:04x}");
-            },
+            }
         }
         Ok(())
     }
@@ -460,8 +466,9 @@ mod tests {
         loop: # Start of for loop
             add    t1, t0, a0    # Add the byte offset for str[i]
             lb     t1, 0(t1)     # Dereference str[i]
-            beqz   t1, end       # if str[i] == 0, break for loop
+            beq    t1, zero, end # if str[i] == 0, break for loop
             addi   t0, t0, 1     # Add 1 to our iterator
+            add    t1, t0, a0
             j      loop          # Jump back to condition (1 backwards)
         end: # End of for loop
             ebreak

@@ -140,7 +140,9 @@ pub enum Opcode {
     add,
     addi,
     auipc,
+    beq,
     ecall,
+    jal,
     lb,
     lui,
     unimp,
@@ -155,7 +157,9 @@ impl Display for Opcode {
                 Opcode::add => "add",
                 Opcode::addi => "addi",
                 Opcode::auipc => "auipc",
+                Opcode::beq => "beq",
                 Opcode::ecall => "ecall",
+                Opcode::jal => "jal",
                 Opcode::lb => "lb",
                 Opcode::lui => "lui",
                 Opcode::unimp => "unimp",
@@ -170,7 +174,9 @@ impl From<Word> for Opcode {
             0b011_0011 => Opcode::add,
             0b001_0011 => Opcode::addi,
             0b001_0111 => Opcode::auipc,
+            0b110_0011 => Opcode::beq,
             0b111_0011 => Opcode::ecall,
+            0b110_1111 => Opcode::jal,
             0b011_0111 => Opcode::lui,
             _ => Opcode::unimp,
         }
@@ -184,7 +190,9 @@ impl From<Opcode> for Word {
             Opcode::add => 0b011_0011,
             Opcode::addi => 0b001_0011,
             Opcode::auipc => 0b001_0111,
+            Opcode::beq => 0b110_0011,
             Opcode::ecall => 0b111_0011,
+            Opcode::jal => 0b110_1111,
             Opcode::lb => 0b000_0011,
             Opcode::lui => 0b011_0111,
         }
@@ -213,9 +221,14 @@ impl Instruction {
     // immediate offsets
     const I_IMM: u32 = 20;
     const U_IMM: u32 = 12;
+    const B_IMM_1: u32 = 7;
+    const B_IMM_2: u32 = 25;
+    const J_IMM: u32 = 12;
 
     const OP_MASK: u32 = 0b0111_1111;
     const R_MASK: u32 = 0b0001_1111;
+    const B_IMM_1_MASK: u32 = 0b0001_1111;
+    const B_IMM_2_MASK: u32 = 0b0111_1111;
 }
 
 impl Display for Instruction {
@@ -227,8 +240,15 @@ impl Display for Instruction {
                 "{} {}, {}, 0x{:02x}",
                 self.opcode, self.rd, self.rs1, self.imm
             ),
-            Opcode::auipc | Opcode::lui => {
+            Opcode::auipc | Opcode::jal | Opcode::lui => {
                 write!(f, "{} {}, 0x{:02x}", self.opcode, self.rd, self.imm)
+            }
+            Opcode::beq => {
+                write!(
+                    f,
+                    "{} {}, {}, 0x{:02x}",
+                    self.opcode, self.rs1, self.rs2, self.imm
+                )
             }
             Opcode::lb => write!(
                 f,
@@ -272,6 +292,45 @@ impl From<Word> for Instruction {
             Opcode::auipc => {
                 let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
                 let imm = word >> Instruction::U_IMM;
+                Instruction {
+                    opcode,
+                    rd,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm,
+                }
+            }
+            Opcode::beq => {
+                let rs1 = ((word >> Instruction::RS1) & Instruction::R_MASK).into();
+                let rs2 = ((word >> Instruction::RS2) & Instruction::R_MASK).into();
+
+                let imm1 = (word >> Instruction::B_IMM_1) & Instruction::B_IMM_1_MASK;
+                let imm2 = (word >> Instruction::B_IMM_2) & Instruction::B_IMM_2_MASK;
+                let mut imm = 0; // imm[0] is always zero for alignment reasons.
+                imm |= imm1 & 0b0001_1110; // imm[4:1]
+                imm |= (imm2 & 0b0011_1111) << 5; // imm[10:5]
+                imm |= (imm1 & 0b0001) << 11; // imm[11]
+                imm |= (imm2 & 0b0100_0000) << 12; // imm[12]
+
+                Instruction {
+                    opcode,
+                    rd: Reg::zero,
+                    rs1,
+                    rs2,
+                    imm,
+                }
+            }
+            Opcode::jal => {
+                let rd = ((word >> Instruction::RD) & Instruction::R_MASK).into();
+
+                let encoded_imm = (word >> 12) & 0xfffff;
+                let imm_10_1 = (encoded_imm >> 9) & 0x3ff; // imm[10:1]
+                let imm_11 = (encoded_imm >> 8) & 0x1; // imm[11]
+                let imm_12_19 = encoded_imm & 0xff; // imm[19:12]
+                let imm_20 = (encoded_imm >> 19) & 0x1; // imm[20]
+
+                let imm = (imm_20 << 20) | (imm_12_19 << 12) | (imm_11 << 11) | (imm_10_1 << 1);
+
                 Instruction {
                     opcode,
                     rd,
@@ -340,8 +399,37 @@ impl From<Instruction> for Word {
 
                 opcode | (rd << Instruction::RD) | (imm << Instruction::U_IMM)
             }
-            Opcode::ecall => instruction.opcode.into(),
+            Opcode::beq => {
+                let opcode: Word = instruction.opcode.into();
+                let f3: Word = 0b000;
+                let rs1: Word = instruction.rs1.into();
+                let rs2: Word = instruction.rs2.into();
 
+                // Bit zero of the imm value is always zero
+                let mut imm1 = (instruction.imm >> 11) & 0b0001; // imm[11]
+                imm1 |= instruction.imm & 0b0001_1110; // imm[4:1]
+
+                let mut imm2 = (instruction.imm >> 5) & 0b0011_1111; // imm[10:5]
+                imm2 |= (instruction.imm >> 12) & 0b0001; // imm[12]
+
+                opcode
+                    | (imm1 << Instruction::B_IMM_1)
+                    | (f3 << Instruction::F3)
+                    | (rs1 << Instruction::RS1)
+                    | (rs2 << Instruction::RS2)
+                    | (imm2 << Instruction::B_IMM_2)
+            }
+            Opcode::ecall => instruction.opcode.into(),
+            Opcode::jal => {
+                let opcode: Word = instruction.opcode.into();
+                let rd: Word = instruction.rd.into();
+                let mut imm = (instruction.imm >> 12) & 0b1111_1111; // imm[19:12]
+                imm |= ((instruction.imm >> 11) & 0b0001) << 8; // imm[11]
+                imm |= ((instruction.imm >> 1) & 0b0011_1111_1111) << 9; // imm[10:1]
+                imm |= (instruction.imm >> 19) & 0b0001; // imm[20]
+
+                opcode | (rd << Instruction::RD) | (imm << Instruction::J_IMM)
+            }
             Opcode::unimp => 0,
         }
     }
@@ -372,6 +460,7 @@ struct Ref {
     address: Address,
 }
 
+#[allow(clippy::too_many_lines)]
 fn assemble_instruction(
     instr: ast::Instruction,
     address: Address,
@@ -398,6 +487,48 @@ fn assemble_instruction(
                 imm: 0,
             }]
         }
+        "addi" => {
+            assert_eq!(instr.operands.len(), 3, "expected 3 operands for addi");
+            let Operand::Register(rd) = &instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Register(rs1) = &instr.operands[1] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Immediate(imm) = instr.operands[2] else {
+                return Err(anyhow!("expected immediate"));
+            };
+            vec![Instruction {
+                opcode: Opcode::addi,
+                rd: Reg::try_from(rd.to_string())?,
+                rs1: Reg::try_from(rs1.to_string())?,
+                rs2: Reg::zero,
+                imm,
+            }]
+        }
+        "beq" => {
+            assert_eq!(instr.operands.len(), 3, "expected 3 operands for beq");
+            let Operand::Register(rs1) = &instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Register(rs2) = &instr.operands[1] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::Symbol(symbol) = &instr.operands[2] else {
+                return Err(anyhow!("expected symbol"));
+            };
+            refs.push(Ref {
+                name: symbol.to_string(),
+                address,
+            });
+            vec![Instruction {
+                opcode: Opcode::beq,
+                rd: Reg::zero,
+                rs1: Reg::try_from(rs1.to_string())?,
+                rs2: Reg::try_from(rs2.to_string())?,
+                imm: 0,
+            }]
+        }
         "ecall" => {
             assert_eq!(instr.operands.len(), 0, "expected 0 operands for ecall");
             vec![Instruction {
@@ -408,12 +539,29 @@ fn assemble_instruction(
                 imm: 0,
             }]
         }
+        "j" => {
+            assert_eq!(instr.operands.len(), 1, "expected 1 operand for j");
+            let Operand::Symbol(symbol) = &instr.operands[0] else {
+                return Err(anyhow!("expected symbol"));
+            };
+            refs.push(Ref {
+                name: symbol.to_string(),
+                address,
+            });
+            vec![Instruction {
+                opcode: Opcode::jal,
+                rd: Reg::zero,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm: 0,
+            }]
+        }
         "la" => {
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for la");
-            let Operand::Register(ref rd) = instr.operands[0] else {
+            let Operand::Register(rd) = &instr.operands[0] else {
                 return Err(anyhow!("expected register"));
             };
-            let Operand::Symbol(ref symbol) = instr.operands[1] else {
+            let Operand::Symbol(symbol) = &instr.operands[1] else {
                 return Err(anyhow!("expected symbol"));
             };
             refs.push(Ref {
@@ -430,7 +578,7 @@ fn assemble_instruction(
         }
         "lb" => {
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for lb");
-            let Operand::Register(ref rd) = instr.operands[0] else {
+            let Operand::Register(rd) = &instr.operands[0] else {
                 return Err(anyhow!("expected register"));
             };
             let Operand::OffsetAddress { imm, ref register } = instr.operands[1] else {
@@ -446,7 +594,7 @@ fn assemble_instruction(
         }
         "li" => {
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for li");
-            let Operand::Register(ref rd) = instr.operands[0] else {
+            let Operand::Register(rd) = &instr.operands[0] else {
                 return Err(anyhow!("expected register"));
             };
             let Operand::Immediate(imm) = instr.operands[1] else {
@@ -497,10 +645,14 @@ fn assemble_program(program: ast::Program) -> Result<Image> {
 
     // Resolve references
     for r in refs {
-        instructions[r.address as usize / size_of::<Word>()].imm = symbols
+        let target = symbols
             .lookup(&r.name)
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
+        let offset = target - r.address;
+        instructions[r.address as usize / size_of::<Word>()].imm = offset;
     }
+
+    println!("{instructions:#?}");
 
     let mut image: Vec<Word> = instructions.into_iter().map(Word::from).collect();
     image.extend_from_slice(&data);
@@ -569,6 +721,18 @@ mod tests {
         }
         let cases = vec![
             TestCase {
+                // B-Type:
+                // iiii_iiid_dddd_dddd_dfff_iiii_iooo_oooo
+                word: 0b0111_1110_1011_0101_0000_1111_1110_0011,
+                instruction: Instruction {
+                    opcode: Opcode::beq,
+                    rd: Reg::zero,
+                    rs1: Reg::a0,
+                    rs2: Reg::a1,
+                    imm: 4094,
+                },
+            },
+            TestCase {
                 // I-Type:
                 //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
                 word: 0b0000_0010_0000_0101_1000_0101_1001_0011,
@@ -600,6 +764,18 @@ mod tests {
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 0,
+                },
+            },
+            TestCase {
+                // J-Type:
+                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
+                word: 0b0000_0000_0100_0000_0000_0000_0110_1111,
+                instruction: Instruction {
+                    opcode: Opcode::jal,
+                    rd: Reg::zero,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 4,
                 },
             },
             TestCase {
