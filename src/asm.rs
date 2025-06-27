@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, bail, Ok, Result};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
@@ -652,8 +652,6 @@ fn assemble_program(program: ast::Program) -> Result<Image> {
         instructions[r.address as usize / size_of::<Word>()].imm = offset;
     }
 
-    println!("{instructions:#?}");
-
     let mut image: Vec<Word> = instructions.into_iter().map(Word::from).collect();
     image.extend_from_slice(&data);
 
@@ -675,43 +673,11 @@ pub fn assemble(input: &str) -> Result<Image> {
     Ok(obj)
 }
 
-/// Builds an executable from `input`.
-///
-/// # Errors
-///
-/// Returns any errors reading the input, assembling the program
-/// or writing the executable to disk.
-pub fn build_exe(input: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<()> {
-    const HEADER: &[u8] = b"rme1";
-
-    let source = std::fs::read_to_string(input)?;
-    let image = assemble(&source)?;
-    let mut bytes = Vec::from(HEADER);
-    bytes.extend(image.into_iter().flat_map(Word::to_be_bytes));
-
-    std::fs::write(output, bytes)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
     use super::*;
-
-    #[test]
-    fn build_exe_fn_creates_an_executable_from_an_asm_source_file() {
-        let mut dir = tempdir().unwrap();
-        let mut exe_path = dir.path().to_owned();
-        exe_path.push("test");
-
-        build_exe("testdata/hello.s", exe_path.clone()).unwrap();
-
-        // header + text section length + text section + data section length + data section
-        let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
-        let got = std::fs::read(exe_path).unwrap();
-        assert_eq!(want, got, "wrong bytes");
-    }
 
     #[test]
     fn decodes_and_encodes_instructions_successfully() {

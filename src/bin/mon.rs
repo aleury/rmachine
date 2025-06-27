@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use std::io::{stdin, stdout, Write};
 
-use rmachine::prelude::*;
+use rmachine::{try_image_from_bytes, prelude::*};
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
@@ -21,7 +21,8 @@ fn main() -> Result<()> {
     let mut debug = args.debug;
     if let Some(path) = args.path {
         let bytes = std::fs::read(path)?;
-        m.load_image_from_bytes(&bytes)?;
+        let image = try_image_from_bytes(&bytes)?;
+        m.load_image(&image);
     } else {
         debug = true;
     }
