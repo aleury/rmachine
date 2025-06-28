@@ -458,6 +458,7 @@ impl SymbolTable {
 struct Ref {
     name: String,
     address: Address,
+    relative: bool,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -520,6 +521,7 @@ fn assemble_instruction(
             refs.push(Ref {
                 name: symbol.to_string(),
                 address,
+                relative: true,
             });
             vec![Instruction {
                 opcode: Opcode::beq,
@@ -547,6 +549,7 @@ fn assemble_instruction(
             refs.push(Ref {
                 name: symbol.to_string(),
                 address,
+                relative: true,
             });
             vec![Instruction {
                 opcode: Opcode::jal,
@@ -557,6 +560,13 @@ fn assemble_instruction(
             }]
         }
         "la" => {
+            // SIMPLIFIED IMPLEMENTATION: The standard RISC-V `la` pseudo-instruction
+            // should expand to
+            //  auipc rd, %pcrel_hi(symbol)
+            //  addi rd, rd, %pcrel_lo(symbol)
+            // to support the full 32-bit address space. For now, we're using a single
+            // `addi rd, zero, symbol_address` which only works for addresses < 2048.
+            // TODO: Implement proper two-instruction expansion with PC-relative addressing.
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for la");
             let Operand::Register(rd) = &instr.operands[0] else {
                 return Err(anyhow!("expected register"));
@@ -567,6 +577,7 @@ fn assemble_instruction(
             refs.push(Ref {
                 name: symbol.to_string(),
                 address,
+                relative: false,
             });
             vec![Instruction {
                 opcode: Opcode::addi,
@@ -648,7 +659,13 @@ fn assemble_program(program: ast::Program) -> Result<Image> {
         let target = symbols
             .lookup(&r.name)
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
-        instructions[r.address as usize / size_of::<Word>()].imm = target;
+        let instruction_index = r.address as usize / size_of::<Word>();
+
+        if r.relative {
+            instructions[instruction_index].imm = target - r.address;
+        } else {
+            instructions[instruction_index].imm = target;
+        }
     }
 
     let mut image: Vec<Word> = instructions.into_iter().map(Word::from).collect();
