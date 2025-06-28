@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
-use rmachine::try_image_from_bytes;
 use rmachine::prelude::Instruction;
+use rmachine::try_image_from_bytes;
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
