@@ -419,7 +419,6 @@ mod tests {
             j      loop          # Jump back to condition (1 backwards)
         end: # End of for loop
             ebreak
-
         mystr:
             .ascii "test\0"
         "#;

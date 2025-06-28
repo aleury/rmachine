@@ -582,7 +582,7 @@ fn assemble_instruction(
                 return Err(anyhow!("expected register"));
             };
             let Operand::OffsetAddress { imm, ref register } = instr.operands[1] else {
-                return Err(anyhow!("expected symbol"));
+                return Err(anyhow!("expected offset address"));
             };
             vec![Instruction {
                 opcode: Opcode::lb,
@@ -648,8 +648,7 @@ fn assemble_program(program: ast::Program) -> Result<Image> {
         let target = symbols
             .lookup(&r.name)
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
-        let offset = target - r.address;
-        instructions[r.address as usize / size_of::<Word>()].imm = offset;
+        instructions[r.address as usize / size_of::<Word>()].imm = target;
     }
 
     let mut image: Vec<Word> = instructions.into_iter().map(Word::from).collect();
@@ -776,7 +775,7 @@ mod tests {
     }
 
     #[test]
-    fn test_assemble_program_returns_object() {
+    fn test_assemble_program_returns_image() {
         let program = parse(
             "_start:
                 la a0, helloworld
