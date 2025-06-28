@@ -2,26 +2,40 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use std::io::{stdin, stdout, Write};
 
-use rmachine::prelude::*;
+use rmachine::{prelude::*, try_image_from_bytes};
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
 struct Cli {
-    #[arg(required = true)]
-    path: String,
+    path: Option<String>,
+    #[arg(short, long)]
+    debug: bool,
 }
 
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    let path = args.path;
-    let bytes = std::fs::read(path)?;
-
     let mut m = Machine::default();
-    m.load_image_from_bytes(&bytes)?;
     let mut sys = TermSys::new();
+
+    let mut debug = args.debug;
+    if let Some(path) = args.path {
+        let bytes = std::fs::read(path)?;
+        let image = try_image_from_bytes(&bytes)?;
+        m.load_image(&image);
+    } else {
+        debug = true;
+    }
+
     let mut input = String::new();
+
     loop {
+        if !debug {
+            if let Ok(()) = m.run(&mut sys) {
+                break;
+            }
+        }
+
         print_state(&m);
         print!("> ");
         stdout().flush()?;

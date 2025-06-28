@@ -6,9 +6,10 @@
 )]
 mod asm;
 mod ast;
+mod exe;
 mod lexer;
 mod machine;
 mod parser;
 pub mod prelude;
 
-pub use asm::build_exe;
+pub use exe::{build_exe, try_image_from_bytes};

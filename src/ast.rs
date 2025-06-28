@@ -7,6 +7,7 @@ pub struct Program {
 
 #[derive(Debug, PartialEq)]
 pub enum Line {
+    Comment(String),
     Label(String),
     Directive(Directive),
     Instruction(Instruction),
@@ -45,4 +46,5 @@ pub enum Operand {
     Immediate(u32),
     Register(String),
     Symbol(String),
+    OffsetAddress { imm: u32, register: String },
 }
