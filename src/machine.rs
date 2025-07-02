@@ -169,7 +169,9 @@ impl Machine {
                 self.regs.set(rd, pc + (imm << 12));
             }
             Opcode::beq => {
-                todo!("implement beq")
+                if rs1 == rs2 {
+                    self.pc = pc + imm;
+                }
             }
             Opcode::ecall => match self.regs.get(Reg::a7) {
                 Self::SYSCALL_WRITE => {
@@ -427,5 +429,27 @@ mod tests {
 
         let mut machine = Machine::new();
         machine.load_image(&image);
+    }
+
+    #[test]
+    fn test_beq_moves_pc_to_target_if_condition_is_true() {
+        let program = "
+        _start:
+            li a0, 0
+            beq a0, zero, end
+            li a0, 1
+        end:
+            addi a0, a0, 2
+        ";
+
+        let image = asm::assemble(program).unwrap();
+        let mut machine = Machine::new();
+        machine.load_image(&image);
+
+        machine.run(&mut TestSys::new());
+
+        let want = 2;
+        let got = machine.regs.get(Reg::a0);
+        assert_eq!(want, got, "wrong a0: {got}, expected: {want}");
     }
 }
