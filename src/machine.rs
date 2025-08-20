@@ -427,4 +427,19 @@ mod tests {
         let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got, "wrong a0");
     }
+
+    #[test]
+    fn lui_loads_imm_into_upper_20_bits_of_destination_register() {
+        let program = "lui a0, 42";
+
+        let image = asm::assemble(program).unwrap();
+        let mut machine = Machine::new();
+        machine.load_image(&image);
+
+        machine.run(&mut TestSys::new());
+
+        let want = 42 << 12;
+        let got = machine.regs.get(Reg::a0);
+        assert_eq!(want, got, "wrong a0");
+    }
 }

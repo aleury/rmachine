@@ -114,10 +114,10 @@ impl Parser {
                 self.expect(TokenType::Comma)?;
                 let rs1 = self.register()?;
                 self.expect(TokenType::Comma)?;
-                let imm = self.immediate()?;
+                let imm = self.immediate_i32()?;
                 Instruction {
                     name,
-                    operands: vec![rd, rs1, Operand::Immediate(imm)],
+                    operands: vec![rd, rs1, Operand::ImmI32(imm)],
                 }
             }
             "beq" => {
@@ -143,7 +143,7 @@ impl Parser {
             "lb" => {
                 let rd = self.register()?;
                 self.expect(TokenType::Comma)?;
-                let imm = self.immediate()?;
+                let imm = self.immediate_i32()?;
                 self.expect(TokenType::LParen)?;
                 let rs = self.identifier()?;
                 self.expect(TokenType::RParen)?;
@@ -161,10 +161,19 @@ impl Parser {
             "li" => {
                 let rd = self.register()?;
                 self.expect(TokenType::Comma)?;
-                let imm = self.immediate()?;
+                let imm = self.immediate_i32()?;
                 Instruction {
                     name,
-                    operands: vec![rd, Operand::Immediate(imm)],
+                    operands: vec![rd, Operand::ImmI32(imm)],
+                }
+            }
+            "lui" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let imm = self.immediate_u32()?;
+                Instruction {
+                    name,
+                    operands: vec![rd, Operand::ImmU32(imm)],
                 }
             }
             "ebreak" | "ecall" => Instruction {
@@ -199,19 +208,22 @@ impl Parser {
         Ok(Operand::Register(ident.to_string()))
     }
 
-    fn immediate<T>(&mut self) -> Result<T>
-    where
-        T: FromStr + Neg<Output = T>,
-        T::Err: Error + Send + Sync + 'static,
-    {
+    fn immediate_u32(&mut self) -> Result<u32> {
+        self.expect(TokenType::Integer)?
+            .lexeme
+            .parse()
+            .context("failed to parse integer")
+    }
+
+    fn immediate_i32(&mut self) -> Result<i32> {
         let mut negative = false;
         if self.expect(TokenType::Minus).is_ok() {
             negative = true;
         }
-        let value = self
+        let value: i32 = self
             .expect(TokenType::Integer)?
             .lexeme
-            .parse::<T>()
+            .parse()
             .context("failed to parse integer")?;
         Ok(if negative { -value } else { value })
     }
@@ -232,6 +244,7 @@ mod tests {
         _start:
             li a0, 1 # set a0 to 1
             li a0, -1
+            lui a1, 42
             la a1, helloworld
             li a2, 13
             li a7, 64
@@ -254,12 +267,16 @@ mod tests {
                 Line::Label("_start".to_string()),
                 Line::Instruction(Instruction {
                     name: "li".to_string(),
-                    operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(1)],
+                    operands: vec![Operand::Register("a0".to_string()), Operand::ImmI32(1)],
                 }),
                 Line::Comment("set a0 to 1".to_string()),
                 Line::Instruction(Instruction {
                     name: "li".to_string(),
-                    operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(-1)],
+                    operands: vec![Operand::Register("a0".to_string()), Operand::ImmI32(-1)],
+                }),
+                Line::Instruction(Instruction {
+                    name: "lui".to_string(),
+                    operands: vec![Operand::Register("a1".to_string()), Operand::ImmU32(42)],
                 }),
                 Line::Instruction(Instruction {
                     name: "la".to_string(),
@@ -270,11 +287,11 @@ mod tests {
                 }),
                 Line::Instruction(Instruction {
                     name: "li".to_string(),
-                    operands: vec![Operand::Register("a2".to_string()), Operand::Immediate(13)],
+                    operands: vec![Operand::Register("a2".to_string()), Operand::ImmI32(13)],
                 }),
                 Line::Instruction(Instruction {
                     name: "li".to_string(),
-                    operands: vec![Operand::Register("a7".to_string()), Operand::Immediate(64)],
+                    operands: vec![Operand::Register("a7".to_string()), Operand::ImmI32(64)],
                 }),
                 Line::Instruction(Instruction {
                     name: "lb".to_string(),
@@ -299,7 +316,7 @@ mod tests {
                     operands: vec![
                         Operand::Register("t0".to_string()),
                         Operand::Register("t0".to_string()),
-                        Operand::Immediate(1),
+                        Operand::ImmI32(1),
                     ],
                 }),
                 Line::Instruction(Instruction {

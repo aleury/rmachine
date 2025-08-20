@@ -497,7 +497,7 @@ fn assemble_instruction(
             let Operand::Register(rs1) = &instr.operands[1] else {
                 return Err(anyhow!("expected register"));
             };
-            let Operand::Immediate(imm) = instr.operands[2] else {
+            let Operand::ImmI32(imm) = instr.operands[2] else {
                 return Err(anyhow!("expected immediate"));
             };
             vec![Instruction {
@@ -609,8 +609,8 @@ fn assemble_instruction(
             let Operand::Register(rd) = &instr.operands[0] else {
                 return Err(anyhow!("expected register"));
             };
-            let Operand::Immediate(imm) = instr.operands[1] else {
-                return Err(anyhow!("expected immediate"));
+            let Operand::ImmI32(imm) = instr.operands[1] else {
+                return Err(anyhow!("expected signed immediate"));
             };
             vec![Instruction {
                 opcode: Opcode::addi,
@@ -618,6 +618,22 @@ fn assemble_instruction(
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm: imm as u32,
+            }]
+        }
+        "lui" => {
+            assert_eq!(instr.operands.len(), 2, "expected 2 operands for lui");
+            let Operand::Register(rd) = &instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::ImmU32(imm) = instr.operands[1] else {
+                return Err(anyhow!("expected unsigned immediate"));
+            };
+            vec![Instruction {
+                opcode: Opcode::lui,
+                rd: Reg::try_from(rd.to_string())?,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm,
             }]
         }
         _ => todo!("Assemble Instruction: {}", instr.name),
@@ -866,6 +882,16 @@ mod tests {
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 64,
+                },
+            },
+            TestCase {
+                program: "lui a0, 42".into(),
+                want: Instruction {
+                    opcode: Opcode::lui,
+                    rd: Reg::a0,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm: 42,
                 },
             },
             TestCase {
