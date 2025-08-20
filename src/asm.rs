@@ -632,7 +632,7 @@ fn assemble_instruction(
                 let upper = (imm >> 12) & 0xFFFFF; // Upper 20 bits
                 let lower = imm & 0xFFF; // Lower 12 bits
 
-                dbg!(vec![
+                vec![
                     Instruction {
                         opcode: Opcode::lui,
                         rd,
@@ -647,7 +647,7 @@ fn assemble_instruction(
                         rs2: Reg::zero,
                         imm: lower,
                     },
-                ])
+                ]
             }
         }
         "lui" => {
