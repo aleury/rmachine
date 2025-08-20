@@ -830,94 +830,94 @@ mod tests {
     fn test_assemble() {
         struct TestCase {
             program: String,
-            want: Instruction,
+            want: Vec<Instruction>,
         }
 
         let cases = [
             TestCase {
                 program: "li a0, 1".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::addi,
                     rd: Reg::a0,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 1,
-                },
+                }],
             },
             TestCase {
                 program: "li a1, 2".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::addi,
                     rd: Reg::a1,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 2,
-                },
+                }],
             },
             TestCase {
                 program: "li a2, 42".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::addi,
                     rd: Reg::a2,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 42,
-                },
+                }],
             },
             TestCase {
                 program: "li a7, 64".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::addi,
                     rd: Reg::a7,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 64,
-                },
+                }],
             },
             TestCase {
                 program: "li t0, 64".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::addi,
                     rd: Reg::t0,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 64,
-                },
+                }],
             },
             TestCase {
                 program: "lui a0, 42".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::lui,
                     rd: Reg::a0,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 42,
-                },
+                }],
             },
             TestCase {
                 program: "ecall".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::ecall,
                     rd: Reg::zero,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: 0,
-                },
+                }],
             },
             TestCase {
                 program: "add t1, t0, a0".into(),
-                want: Instruction {
+                want: vec![Instruction {
                     opcode: Opcode::add,
                     rd: Reg::t1,
                     rs1: Reg::t0,
                     rs2: Reg::a0,
                     imm: 0,
-                },
+                }],
             },
         ];
 
         for case in cases {
-            let want: Vec<Word> = vec![case.want.into()];
+            let want: Vec<Word> = case.want.into_iter().map(Word::from).collect();
             let got = assemble(&case.program).unwrap();
             assert_eq!(want, got);
         }
