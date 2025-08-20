@@ -1,4 +1,5 @@
-use anyhow::{anyhow, bail, Ok, Result};
+#![allow(clippy::cast_sign_loss)]
+use anyhow::{anyhow, bail, Context, Ok, Result};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
@@ -504,7 +505,7 @@ fn assemble_instruction(
                 rd: Reg::try_from(rd.to_string())?,
                 rs1: Reg::try_from(rs1.to_string())?,
                 rs2: Reg::zero,
-                imm,
+                imm: imm as u32,
             }]
         }
         "beq" => {
@@ -600,7 +601,7 @@ fn assemble_instruction(
                 rd: Reg::try_from(rd.to_string())?,
                 rs1: Reg::try_from(register.to_string())?,
                 rs2: Reg::zero,
-                imm,
+                imm: imm as u32,
             }]
         }
         "li" => {
@@ -616,7 +617,7 @@ fn assemble_instruction(
                 rd: Reg::try_from(rd.to_string())?,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
-                imm,
+                imm: imm as u32,
             }]
         }
         _ => todo!("Assemble Instruction: {}", instr.name),
@@ -661,11 +662,11 @@ fn assemble_program(program: ast::Program) -> Result<Image> {
             .ok_or(anyhow!("unknown identifier: {:#?}", r.name))?;
         let instruction_index = r.address as usize / size_of::<Word>();
 
+        let mut imm = target;
         if r.relative {
-            instructions[instruction_index].imm = target - r.address;
-        } else {
-            instructions[instruction_index].imm = target;
+            imm = imm.checked_sub(r.address).context("underflow")?;
         }
+        instructions[instruction_index].imm = imm;
     }
 
     let mut image: Vec<Word> = instructions.into_iter().map(Word::from).collect();

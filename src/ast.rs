@@ -43,8 +43,8 @@ pub struct Instruction {
 
 #[derive(Debug, PartialEq)]
 pub enum Operand {
-    Immediate(u32),
+    Immediate(i32),
     Register(String),
     Symbol(String),
-    OffsetAddress { imm: u32, register: String },
+    OffsetAddress { imm: i32, register: String },
 }

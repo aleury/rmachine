@@ -2,8 +2,15 @@ use crate::{
     ast::{Directive, Identifier, Instruction, Line, Operand, Program},
     lexer::{Token, TokenType},
 };
-use anyhow::{anyhow, Result};
-use std::{iter::Peekable, vec::IntoIter};
+use anyhow::{anyhow, Context, Result};
+use std::{
+    error::Error,
+    fmt::{Debug, Display},
+    iter::Peekable,
+    ops::Neg,
+    str::FromStr,
+    vec::IntoIter,
+};
 
 pub struct Parser {
     tokens: Peekable<IntoIter<Token>>,
@@ -192,11 +199,21 @@ impl Parser {
         Ok(Operand::Register(ident.to_string()))
     }
 
-    fn immediate(&mut self) -> Result<u32> {
-        self.expect(TokenType::Integer)?
+    fn immediate<T>(&mut self) -> Result<T>
+    where
+        T: FromStr + Neg<Output = T>,
+        T::Err: Error + Send + Sync + 'static,
+    {
+        let mut negative = false;
+        if self.expect(TokenType::Minus).is_ok() {
+            negative = true;
+        }
+        let value = self
+            .expect(TokenType::Integer)?
             .lexeme
-            .parse()
-            .map_err(|_| anyhow!("expected to parse integer"))
+            .parse::<T>()
+            .context("failed to parse integer")?;
+        Ok(if negative { -value } else { value })
     }
 }
 
@@ -207,12 +224,14 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn parser_parse_returns_program_ast() {
         let program = "
         .globl _start
         .section .text
         _start:
             li a0, 1 # set a0 to 1
+            li a0, -1
             la a1, helloworld
             li a2, 13
             li a7, 64
@@ -238,6 +257,10 @@ mod tests {
                     operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(1)],
                 }),
                 Line::Comment("set a0 to 1".to_string()),
+                Line::Instruction(Instruction {
+                    name: "li".to_string(),
+                    operands: vec![Operand::Register("a0".to_string()), Operand::Immediate(-1)],
+                }),
                 Line::Instruction(Instruction {
                     name: "la".to_string(),
                     operands: vec![

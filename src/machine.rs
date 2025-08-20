@@ -425,6 +425,6 @@ mod tests {
 
         let want = 2;
         let got = machine.regs.get(Reg::a0);
-        assert_eq!(want, got, "wrong a0: {got}, expected: {want}");
+        assert_eq!(want, got, "wrong a0");
     }
 }
