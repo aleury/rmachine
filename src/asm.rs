@@ -34,7 +34,7 @@ pub type Address = u32;
 // f28–31 ft8–11 FP temporaries Caller
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Default, Eq, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, PartialOrd)]
 pub enum Reg {
     #[default]
     zero,
@@ -90,6 +90,8 @@ impl From<Word> for Reg {
     fn from(word: Word) -> Self {
         match word {
             0b00000 => Reg::zero,
+            0b00101 => Reg::t0,
+            0b00110 => Reg::t1,
             0b01010 => Reg::a0,
             0b01011 => Reg::a1,
             0b01100 => Reg::a2,
@@ -136,7 +138,7 @@ impl TryFrom<String> for Reg {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, PartialOrd)]
 pub enum Opcode {
     add,
     addi,
@@ -200,7 +202,7 @@ impl From<Opcode> for Word {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Instruction {
     pub opcode: Opcode,
     pub rd: Reg,
@@ -612,13 +614,41 @@ fn assemble_instruction(
             let Operand::ImmI32(imm) = instr.operands[1] else {
                 return Err(anyhow!("expected signed immediate"));
             };
-            vec![Instruction {
-                opcode: Opcode::addi,
-                rd: Reg::try_from(rd.to_string())?,
-                rs1: Reg::zero,
-                rs2: Reg::zero,
-                imm: imm as u32,
-            }]
+
+            let imm = imm as u32;
+
+            // Check if immediate is within 12-bit signed range
+            if imm <= 4095 {
+                vec![Instruction {
+                    opcode: Opcode::addi,
+                    rd: Reg::try_from(rd.to_string())?,
+                    rs1: Reg::zero,
+                    rs2: Reg::zero,
+                    imm,
+                }]
+            } else {
+                // For larger immediates, use lui + addi.
+                let rd = Reg::try_from(rd.to_string())?;
+                let upper = (imm >> 12) & 0xFFFFF; // Upper 20 bits
+                let lower = imm & 0xFFF; // Lower 12 bits
+
+                dbg!(vec![
+                    Instruction {
+                        opcode: Opcode::lui,
+                        rd,
+                        rs1: Reg::zero,
+                        rs2: Reg::zero,
+                        imm: upper,
+                    },
+                    Instruction {
+                        opcode: Opcode::addi,
+                        rd,
+                        rs1: Reg::zero,
+                        rs2: Reg::zero,
+                        imm: lower,
+                    },
+                ])
+            }
         }
         "lui" => {
             assert_eq!(instr.operands.len(), 2, "expected 2 operands for lui");
@@ -711,6 +741,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn decodes_and_encodes_instructions_successfully() {
@@ -827,6 +858,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_assemble() {
         struct TestCase {
             program: String,
@@ -843,6 +875,44 @@ mod tests {
                     rs2: Reg::zero,
                     imm: 1,
                 }],
+            },
+            TestCase {
+                program: "li a0, -1".into(),
+                want: vec![
+                    Instruction {
+                        opcode: Opcode::lui,
+                        rd: Reg::a0,
+                        rs1: Reg::zero,
+                        rs2: Reg::zero,
+                        imm: 0xFFFFFFFF >> 12,
+                    },
+                    Instruction {
+                        opcode: Opcode::addi,
+                        rd: Reg::a0,
+                        rs1: Reg::zero,
+                        rs2: Reg::zero,
+                        imm: 0xFFF,
+                    },
+                ],
+            },
+            TestCase {
+                program: "li a0, 4100".into(),
+                want: vec![
+                    Instruction {
+                        opcode: Opcode::lui,
+                        rd: Reg::a0,
+                        rs1: Reg::zero,
+                        rs2: Reg::zero,
+                        imm: (4100 >> 12) & 0xFFFFF,
+                    },
+                    Instruction {
+                        opcode: Opcode::addi,
+                        rd: Reg::a0,
+                        rs1: Reg::zero,
+                        rs2: Reg::zero,
+                        imm: 4100 & 0xFFF,
+                    },
+                ],
             },
             TestCase {
                 program: "li a1, 2".into(),
@@ -917,9 +987,17 @@ mod tests {
         ];
 
         for case in cases {
-            let want: Vec<Word> = case.want.into_iter().map(Word::from).collect();
-            let got = assemble(&case.program).unwrap();
-            assert_eq!(want, got);
+            let want = case.want;
+
+            let image = assemble(&case.program).unwrap();
+
+            // Assert that assembled instructions match the expected instructions
+            let got: Vec<Instruction> = image.clone().into_iter().map(Instruction::from).collect();
+            assert_eq!(want, got, "program: {}", case.program);
+
+            // Assert that the assembled image matches the expected image
+            let want_image: Vec<Word> = want.into_iter().map(Word::from).collect();
+            assert_eq!(want_image, image, "program: {}", case.program);
         }
     }
 
