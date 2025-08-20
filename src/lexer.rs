@@ -5,6 +5,7 @@ pub enum TokenType {
     Colon,
     Comma,
     Dot,
+    Minus,
     LParen,
     RParen,
     Integer,
@@ -92,6 +93,10 @@ impl Lexer {
                     self.read_char();
                     Token::new(TokenType::Dot, ".")
                 }
+                '-' => {
+                    self.read_char();
+                    Token::new(TokenType::Minus, "-")
+                }
                 '(' => {
                     self.read_char();
                     Token::new(TokenType::LParen, "(")
@@ -169,7 +174,32 @@ mod tests {
         }
         let cases = [
             TestCase {
-                program: "lb t0 0(t0)".to_string(),
+                program: "li a0, -1".to_string(),
+                want: vec![
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "li".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Identifier,
+                        lexeme: "a0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Minus,
+                        lexeme: "-".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Integer,
+                        lexeme: "1".to_string(),
+                    },
+                ],
+            },
+            TestCase {
+                program: "lb t0, 0(t0)".to_string(),
                 want: vec![
                     Token {
                         token_type: TokenType::Identifier,
@@ -178,6 +208,10 @@ mod tests {
                     Token {
                         token_type: TokenType::Identifier,
                         lexeme: "t0".to_string(),
+                    },
+                    Token {
+                        token_type: TokenType::Comma,
+                        lexeme: ",".to_string(),
                     },
                     Token {
                         token_type: TokenType::Integer,
