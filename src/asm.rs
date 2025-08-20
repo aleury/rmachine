@@ -739,104 +739,89 @@ pub fn assemble(input: &str) -> Result<Image> {
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
+    use test_case::test_case;
 
     use super::*;
     use pretty_assertions::assert_eq;
 
-    #[test]
-    fn decodes_and_encodes_instructions_successfully() {
-        struct TestCase {
-            word: Word,
-            instruction: Instruction,
-        }
-        let cases = vec![
-            TestCase {
-                // B-Type:
-                // iiii_iiid_dddd_dddd_dfff_iiii_iooo_oooo
-                word: 0b0111_1110_1011_0101_0000_1111_1110_0011,
-                instruction: Instruction {
-                    opcode: Opcode::beq,
-                    rd: Reg::zero,
-                    rs1: Reg::a0,
-                    rs2: Reg::a1,
-                    imm: 4094,
-                },
-            },
-            TestCase {
-                // I-Type:
-                //      iiii_iiii_iiii_ssss_sfff_dddd_dooo_oooo
-                word: 0b0000_0010_0000_0101_1000_0101_1001_0011,
-                instruction: Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::a1,
-                    rs1: Reg::a1,
-                    rs2: Reg::zero,
-                    imm: 32,
-                },
-            },
-            TestCase {
-                // U-Type:
-                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
-                word: 0b0000_0000_0000_0000_0010_0101_0001_0111,
-                instruction: Instruction {
-                    opcode: Opcode::auipc,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 2,
-                },
-            },
-            TestCase {
-                word: 0b0000_0000_0000_0000_0000_0000_0111_0011,
-                instruction: Instruction {
-                    opcode: Opcode::ecall,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                },
-            },
-            TestCase {
-                // J-Type:
-                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
-                word: 0b0000_0000_0100_0000_0000_0000_0110_1111,
-                instruction: Instruction {
-                    opcode: Opcode::jal,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 4,
-                },
-            },
-            TestCase {
-                // U-Type:
-                //      iiii_iiii_iiii_iiii_iiii_dddd_dooo_oooo
-                word: 0b0000_0000_0000_0000_0010_0101_0011_0111,
-                instruction: Instruction {
-                    opcode: Opcode::lui,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 2,
-                },
-            },
-        ];
+    #[test_case(
+        0b0111_1110_1011_0101_0000_1111_1110_0011,
+        Instruction {
+            opcode: Opcode::beq,
+            rd: Reg::zero,
+            rs1: Reg::a0,
+            rs2: Reg::a1,
+            imm: 4094,
+        } ;
+        "B-Type beq instruction"
+    )]
+    #[test_case(
+        0b0000_0010_0000_0101_1000_0101_1001_0011,
+        Instruction {
+            opcode: Opcode::addi,
+            rd: Reg::a1,
+            rs1: Reg::a1,
+            rs2: Reg::zero,
+            imm: 32,
+        } ;
+        "I-Type addi instruction"
+    )]
+    #[test_case(
+        0b0000_0000_0000_0000_0010_0101_0001_0111,
+        Instruction {
+            opcode: Opcode::auipc,
+            rd: Reg::a0,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 2,
+        } ;
+        "U-Type auipc instruction"
+    )]
+    #[test_case(
+        0b0000_0000_0100_0000_0000_0000_0110_1111,
+        Instruction {
+            opcode: Opcode::jal,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 4,
+        } ;
+        "J-Type jal instruction"
+    )]
+    #[test_case(
+        0b0000_0000_0000_0000_0010_0101_0011_0111,
+        Instruction {
+            opcode: Opcode::lui,
+            rd: Reg::a0,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 2,
+        } ;
+        "U-Type lui instruction"
+    )]
+    #[test_case(
+        0b0000_0000_0000_0000_0000_0000_0111_0011,
+        Instruction {
+            opcode: Opcode::ecall,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 0,
+        } ;
+        "ecall instruction"
+    )]
+    fn decodes_and_encodes_instructions_successfully(word: Word, instruction: Instruction) {
+        // Test decoding
+        let got = Instruction::from(word);
+        assert_eq!(instruction, got, "failed to decode instruction from word");
 
-        for case in cases {
-            let got = Instruction::from(case.word);
-            assert_eq!(
-                case.instruction, got,
-                "failed to decode instruction from word"
-            );
-
-            let got: Word = got.into();
-
-            assert_eq!(
-                case.word, got,
-                "failed to encode instruction into word: {:b}, {:b}",
-                case.word, got,
-            );
-        }
+        // Test encoding
+        let got_word: Word = got.into();
+        assert_eq!(
+            word, got_word,
+            "failed to encode instruction into word: {:b}, {:b}",
+            word, got_word,
+        );
     }
 
     #[test]
@@ -857,153 +842,86 @@ mod tests {
         assert_eq!(want, got);
     }
 
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_assemble() {
-        struct TestCase {
-            program: String,
-            want: Vec<Instruction>,
-        }
+    #[test_case("li a0, 1", vec![instr_addi(Reg::a0, Reg::zero, 1)] ; "load immediate 1")]
+    #[test_case("li a1, 2", vec![instr_addi(Reg::a1, Reg::zero, 2)] ; "load immediate 2")]
+    #[test_case("li a2, 42", vec![instr_addi(Reg::a2, Reg::zero, 42)] ; "load immediate 42")]
+    #[test_case("li a7, 64", vec![instr_addi(Reg::a7, Reg::zero, 64)] ; "load immediate 64")]
+    #[test_case("li t0, 64", vec![instr_addi(Reg::t0, Reg::zero, 64)] ; "load immediate to t0")]
+    #[test_case(
+        "li a0, -1",
+        vec![
+            instr_lui(Reg::a0, 0xFFFFFFFF >> 12),
+            instr_addi(Reg::a0, Reg::zero, 0xFFF)
+        ] ;
+        "load negative immediate"
+    )]
+    #[test_case(
+        "li a0, 4100",
+        vec![
+            instr_lui(Reg::a0, (4100 >> 12) & 0xFFFFF),
+            instr_addi(Reg::a0, Reg::zero, 4100 & 0xFFF)
+        ] ;
+        "load large immediate"
+    )]
+    #[test_case("lui a0, 42", vec![instr_lui(Reg::a0, 42)] ; "load upper immediate")]
+    #[test_case("ecall", vec![instr_ecall()] ; "environment call")]
+    #[test_case("add t1, t0, a0", vec![instr_add(Reg::t1, Reg::t0, Reg::a0)] ; "register add")]
+    fn test_assemble(program: &str, expected: Vec<Instruction>) {
+        let image = assemble(program).unwrap();
 
-        let cases = [
-            TestCase {
-                program: "li a0, 1".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 1,
-                }],
-            },
-            TestCase {
-                program: "li a0, -1".into(),
-                want: vec![
-                    Instruction {
-                        opcode: Opcode::lui,
-                        rd: Reg::a0,
-                        rs1: Reg::zero,
-                        rs2: Reg::zero,
-                        imm: 0xFFFFFFFF >> 12,
-                    },
-                    Instruction {
-                        opcode: Opcode::addi,
-                        rd: Reg::a0,
-                        rs1: Reg::zero,
-                        rs2: Reg::zero,
-                        imm: 0xFFF,
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a0, 4100".into(),
-                want: vec![
-                    Instruction {
-                        opcode: Opcode::lui,
-                        rd: Reg::a0,
-                        rs1: Reg::zero,
-                        rs2: Reg::zero,
-                        imm: (4100 >> 12) & 0xFFFFF,
-                    },
-                    Instruction {
-                        opcode: Opcode::addi,
-                        rd: Reg::a0,
-                        rs1: Reg::zero,
-                        rs2: Reg::zero,
-                        imm: 4100 & 0xFFF,
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a1, 2".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::a1,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 2,
-                }],
-            },
-            TestCase {
-                program: "li a2, 42".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::a2,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 42,
-                }],
-            },
-            TestCase {
-                program: "li a7, 64".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::a7,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 64,
-                }],
-            },
-            TestCase {
-                program: "li t0, 64".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::addi,
-                    rd: Reg::t0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 64,
-                }],
-            },
-            TestCase {
-                program: "lui a0, 42".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::lui,
-                    rd: Reg::a0,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 42,
-                }],
-            },
-            TestCase {
-                program: "ecall".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::ecall,
-                    rd: Reg::zero,
-                    rs1: Reg::zero,
-                    rs2: Reg::zero,
-                    imm: 0,
-                }],
-            },
-            TestCase {
-                program: "add t1, t0, a0".into(),
-                want: vec![Instruction {
-                    opcode: Opcode::add,
-                    rd: Reg::t1,
-                    rs1: Reg::t0,
-                    rs2: Reg::a0,
-                    imm: 0,
-                }],
-            },
-        ];
+        // Assert that assembled instructions match the expected instructions
+        let got: Vec<Instruction> = image.iter().map(|&word| Instruction::from(word)).collect();
+        assert_eq!(expected, got, "program: {}", program);
 
-        for case in cases {
-            let want = case.want;
-
-            let image = assemble(&case.program).unwrap();
-
-            // Assert that assembled instructions match the expected instructions
-            let got: Vec<Instruction> = image.clone().into_iter().map(Instruction::from).collect();
-            assert_eq!(want, got, "program: {}", case.program);
-
-            // Assert that the assembled image matches the expected image
-            let want_image: Vec<Word> = want.into_iter().map(Word::from).collect();
-            assert_eq!(want_image, image, "program: {}", case.program);
-        }
+        // Assert that the assembled image matches the expected image
+        let expected_image: Vec<Word> = expected.into_iter().map(Word::from).collect();
+        assert_eq!(expected_image, image, "program: {}", program);
     }
 
     fn parse(input: &str) -> ast::Program {
         let tokens = lexer::tokenize(input);
         let mut parser = Parser::new(tokens);
         parser.parse().unwrap()
+    }
+
+    // Helper functions for creating instructions
+    fn instr_addi(rd: Reg, rs1: Reg, imm: u32) -> Instruction {
+        Instruction {
+            opcode: Opcode::addi,
+            rd,
+            rs1,
+            rs2: Reg::zero,
+            imm,
+        }
+    }
+
+    fn instr_lui(rd: Reg, imm: u32) -> Instruction {
+        Instruction {
+            opcode: Opcode::lui,
+            rd,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm,
+        }
+    }
+
+    fn instr_add(rd: Reg, rs1: Reg, rs2: Reg) -> Instruction {
+        Instruction {
+            opcode: Opcode::add,
+            rd,
+            rs1,
+            rs2,
+            imm: 0,
+        }
+    }
+
+    fn instr_ecall() -> Instruction {
+        Instruction {
+            opcode: Opcode::ecall,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 0,
+        }
     }
 }

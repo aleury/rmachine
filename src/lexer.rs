@@ -164,308 +164,188 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_case::test_case;
 
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    fn tokenize_returns_tokens() {
-        struct TestCase {
-            program: String,
-            want: Vec<Token>,
-        }
-        let cases = [
-            TestCase {
-                program: "li a0, -1".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a0".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Minus,
-                        lexeme: "-".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "1".to_string(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "lb t0, 0(t0)".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "lb".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "t0".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "0".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::LParen,
-                        lexeme: "(".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "t0".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::RParen,
-                        lexeme: ")".to_string(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "# this is a comment\nli a0, 42".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Comment,
-                        lexeme: "this is a comment".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a0".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "42".to_string(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a0, 42 # this is a comment".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a0".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "42".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Comment,
-                        lexeme: "this is a comment".to_string(),
-                    },
-                ],
-            },
-            TestCase {
-                program: ".ascii \"Hello World!\n\"".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Dot,
-                        lexeme: ".".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "ascii".into(),
-                    },
-                    Token {
-                        token_type: TokenType::String,
-                        lexeme: "Hello World!\n".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: ".global _start".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Dot,
-                        lexeme: ".".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "global".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "_start".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: ".section .text".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Dot,
-                        lexeme: ".".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "section".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Dot,
-                        lexeme: ".".to_string(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "text".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "_start:".to_string(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "_start".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Colon,
-                        lexeme: ":".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a0, 1".into(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a0".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "1".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a1, 32".into(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a1".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "32".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a2, 13".into(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a2".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "13".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "li a7, 64".into(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "li".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a7".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Integer,
-                        lexeme: "64".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "la a1, helloworld".into(),
-                want: vec![
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "la".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "a1".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Comma,
-                        lexeme: ",".into(),
-                    },
-                    Token {
-                        token_type: TokenType::Identifier,
-                        lexeme: "helloworld".into(),
-                    },
-                ],
-            },
-            TestCase {
-                program: "ecall".into(),
-                want: vec![Token {
-                    token_type: TokenType::Identifier,
-                    lexeme: "ecall".into(),
-                }],
-            },
-        ];
+    #[test_case(
+        "li a0, -1",
+        vec![
+            token_ident("li"),
+            token_ident("a0"),
+            token_comma(),
+            token_minus(),
+            token_int("1"),
+        ] ;
+        "load immediate with negative"
+    )]
+    #[test_case(
+        "lb t0, 0(t0)",
+        vec![
+            token_ident("lb"),
+            token_ident("t0"),
+            token_comma(),
+            token_int("0"),
+            token_lparen(),
+            token_ident("t0"),
+            token_rparen(),
+        ] ;
+        "load byte with offset addressing"
+    )]
+    #[test_case(
+        "# this is a comment\nli a0, 42",
+        vec![
+            token_comment("this is a comment"),
+            token_ident("li"),
+            token_ident("a0"),
+            token_comma(),
+            token_int("42"),
+        ] ;
+        "comment on separate line"
+    )]
+    #[test_case(
+        "li a0, 42 # this is a comment",
+        vec![
+            token_ident("li"),
+            token_ident("a0"),
+            token_comma(),
+            token_int("42"),
+            token_comment("this is a comment"),
+        ] ;
+        "inline comment"
+    )]
+    #[test_case(
+        ".ascii \"Hello World!\n\"",
+        vec![
+            token_dot(),
+            token_ident("ascii"),
+            token_string("Hello World!\n"),
+        ] ;
+        "ascii directive with string"
+    )]
+    #[test_case(
+        ".global _start",
+        vec![
+            token_dot(),
+            token_ident("global"),
+            token_ident("_start"),
+        ] ;
+        "global directive"
+    )]
+    #[test_case(
+        ".section .text",
+        vec![
+            token_dot(),
+            token_ident("section"),
+            token_dot(),
+            token_ident("text"),
+        ] ;
+        "section directive"
+    )]
+    #[test_case(
+        "_start:",
+        vec![
+            token_ident("_start"),
+            token_colon(),
+        ] ;
+        "label definition"
+    )]
+    #[test_case(
+        "li a0, 1",
+        vec![
+            token_ident("li"),
+            token_ident("a0"),
+            token_comma(),
+            token_int("1"),
+        ] ;
+        "load immediate 1"
+    )]
+    #[test_case(
+        "li a1, 32",
+        vec![
+            token_ident("li"),
+            token_ident("a1"),
+            token_comma(),
+            token_int("32"),
+        ] ;
+        "load immediate 32"
+    )]
+    #[test_case(
+        "li a2, 13",
+        vec![
+            token_ident("li"),
+            token_ident("a2"),
+            token_comma(),
+            token_int("13"),
+        ] ;
+        "load immediate 13"
+    )]
+    #[test_case(
+        "li a7, 64",
+        vec![
+            token_ident("li"),
+            token_ident("a7"),
+            token_comma(),
+            token_int("64"),
+        ] ;
+        "load immediate 64"
+    )]
+    #[test_case(
+        "la a1, helloworld",
+        vec![
+            token_ident("la"),
+            token_ident("a1"),
+            token_comma(),
+            token_ident("helloworld"),
+        ] ;
+        "load address"
+    )]
+    #[test_case(
+        "ecall",
+        vec![token_ident("ecall")] ;
+        "environment call"
+    )]
+    fn tokenize_returns_tokens(program: &str, expected: Vec<Token>) {
+        let got = tokenize(program);
+        assert_eq!(expected, got);
+    }
 
-        for case in cases {
-            let got = tokenize(&case.program);
-            assert_eq!(case.want, got);
-        }
+    // Helper functions for creating tokens
+    fn token_ident(lexeme: &str) -> Token {
+        Token::new(TokenType::Identifier, lexeme)
+    }
+
+    fn token_int(lexeme: &str) -> Token {
+        Token::new(TokenType::Integer, lexeme)
+    }
+
+    fn token_string(lexeme: &str) -> Token {
+        Token::new(TokenType::String, lexeme)
+    }
+
+    fn token_comment(lexeme: &str) -> Token {
+        Token::new(TokenType::Comment, lexeme)
+    }
+
+    fn token_comma() -> Token {
+        Token::new(TokenType::Comma, ",")
+    }
+
+    fn token_colon() -> Token {
+        Token::new(TokenType::Colon, ":")
+    }
+
+    fn token_dot() -> Token {
+        Token::new(TokenType::Dot, ".")
+    }
+
+    fn token_minus() -> Token {
+        Token::new(TokenType::Minus, "-")
+    }
+
+    fn token_lparen() -> Token {
+        Token::new(TokenType::LParen, "(")
+    }
+
+    fn token_rparen() -> Token {
+        Token::new(TokenType::RParen, ")")
     }
 }
