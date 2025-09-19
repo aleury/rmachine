@@ -163,7 +163,7 @@ impl Machine {
                 self.regs.set(rd, rs1 + rs2);
             }
             Opcode::addi => {
-                self.regs.set(rd, rs1 + imm);
+                self.regs.set(rd, rs1.wrapping_add(imm));
             }
             Opcode::auipc => {
                 self.regs.set(rd, pc + (imm << 12));

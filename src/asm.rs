@@ -289,7 +289,7 @@ impl From<Word> for Instruction {
                     rd,
                     rs1,
                     rs2: Reg::zero,
-                    imm,
+                    imm: sign_extend_12(imm),
                 }
             }
             Opcode::auipc => {
@@ -464,6 +464,14 @@ struct Ref {
     relative: bool,
 }
 
+fn sign_extend_12(value: u32) -> u32 {
+    if value & 0x800 != 0 {
+        value | 0xFFFFF000
+    } else {
+        value & 0xFFF
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 fn assemble_instruction(
     instr: ast::Instruction,
@@ -615,22 +623,26 @@ fn assemble_instruction(
                 return Err(anyhow!("expected signed immediate"));
             };
 
-            let imm = imm as u32;
-
-            // Check if immediate is within 12-bit signed range
-            if imm <= 4095 {
+            if (-2048..=2047).contains(&imm) {
                 vec![Instruction {
                     opcode: Opcode::addi,
                     rd: Reg::try_from(rd.to_string())?,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
-                    imm,
+                    imm: imm as u32 | 0xFFFFF000,
                 }]
             } else {
                 // For larger immediates, use lui + addi.
+                let imm = imm as u32;
+                let lower_12 = imm & 0xFFF;
+                let upper_20 = imm >> 12;
                 let rd = Reg::try_from(rd.to_string())?;
-                let upper = (imm >> 12) & 0xFFFFF; // Upper 20 bits
-                let lower = imm & 0xFFF; // Lower 12 bits
+
+                let (upper, lower) = if lower_12 & 0x800 != 0 {
+                    (upper_20.wrapping_add(1) & 0xFFFFF, lower_12 | 0xFFFFF000)
+                } else {
+                    (upper_20, lower_12)
+                };
 
                 vec![
                     Instruction {
@@ -643,7 +655,7 @@ fn assemble_instruction(
                     Instruction {
                         opcode: Opcode::addi,
                         rd,
-                        rs1: Reg::zero,
+                        rs1: rd,
                         rs2: Reg::zero,
                         imm: lower,
                     },
@@ -850,16 +862,23 @@ mod tests {
     #[test_case(
         "li a0, -1",
         vec![
-            instr_lui(Reg::a0, 0xFFFFFFFF >> 12),
-            instr_addi(Reg::a0, Reg::zero, 0xFFF)
+            instr_addi(Reg::a0, Reg::zero, 0xFFFFFFFF)
         ] ;
         "load negative immediate"
     )]
     #[test_case(
-        "li a0, 4100",
+       "li a0, -2049",
+       vec![
+           instr_lui(Reg::a0, 0xFFFFF),
+           instr_addi(Reg::a0, Reg::a0, 2047i32 as u32)
+       ] ;
+       "load large negative immediate"
+    )]
+    #[test_case(
+        "li a0, 2048",
         vec![
-            instr_lui(Reg::a0, (4100 >> 12) & 0xFFFFF),
-            instr_addi(Reg::a0, Reg::zero, 4100 & 0xFFF)
+            instr_lui(Reg::a0, 0x1),
+            instr_addi(Reg::a0, Reg::a0, -2048i32 as u32)
         ] ;
         "load large immediate"
     )]
