@@ -4,9 +4,9 @@ use tempfile::tempdir;
 #[test]
 fn rmachine_runs_executable() {
     let temp_dir = tempdir().unwrap();
-    let obj_path = temp_dir.into_path().join("hello2");
+    let obj_path = temp_dir.into_path().join("hello");
 
-    rmachine::build_exe("testdata/hello2.s", &obj_path).unwrap();
+    rmachine::build_exe("testdata/hello.s", &obj_path).unwrap();
 
     let mut cmd = Command::cargo_bin("rmon").unwrap();
 

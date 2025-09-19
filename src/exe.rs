@@ -1,8 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use std::path::Path;
 
-use crate::asm::{assemble, Image, Word};
+use crate::asm::{Image, Word, assemble};
 
 /// Builds an executable from `input`.
 ///
@@ -59,7 +59,7 @@ mod tests {
         let mut exe_path = dir.path().to_owned();
         exe_path.push("test");
 
-        build_exe("testdata/hello.s", exe_path.clone()).unwrap();
+        build_exe("testdata/li2.s", exe_path.clone()).unwrap();
 
         // header + text section length + text section + data section length + data section
         let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];

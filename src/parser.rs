@@ -239,7 +239,7 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     fn parser_parse_returns_program_ast() {
         let program = "
-        .globl _start
+        .global _start
         .section .text
         _start:
             li a0, 1 # set a0 to 1
