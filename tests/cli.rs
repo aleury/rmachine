@@ -57,8 +57,7 @@ fn rasm_output_flag_creates_custom_output_file() {
     // Check that the custom output file was created
     assert!(
         output_path.exists(),
-        "Output file should exist at {:?}",
-        output_path
+        "Output file should exist at {output_path:?}",
     );
 }
 
