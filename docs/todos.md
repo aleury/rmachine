@@ -7,4 +7,4 @@
 - [x] Fix `load_image_from_bytes` for new exe format
 - [x] Refactor `rd` to use `load_image_from_bytes`
 - [ ] Rename .ascii directive to .utf8
-- [ ] Add `-o` output flag support to `rasm` assembler
+- [x] Add `-o` output flag support to `rasm` assembler

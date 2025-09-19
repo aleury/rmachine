@@ -43,7 +43,8 @@ cargo build --release
 Assemble source code into executable format:
 
 ```bash
-rasm input.s    # Creates input (executable without extension)
+rasm input.s              # Creates input (executable without extension)
+rasm input.s -o output    # Specify custom output file
 ```
 
 ### Debugger (rmon)
@@ -86,8 +87,8 @@ The `examples/` directory contains sample R-Machine assembly programs:
 Run an example:
 
 ```bash
-rasm examples/ex1.s
-rmon examples/ex1
+rasm examples/ex1.s -o hello.rmx
+rmon hello.rmx
 ```
 
 ## Documentation
