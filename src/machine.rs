@@ -1,10 +1,10 @@
 use crate::asm::{Address, Instruction, Opcode, Reg, Word};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use std::{
     char::REPLACEMENT_CHARACTER,
     collections::HashMap,
     fmt::Display,
-    io::{stdout, Stdout, Write},
+    io::{Stdout, Write, stdout},
 };
 
 #[derive(Debug, Default, Eq, PartialEq)]
