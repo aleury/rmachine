@@ -15,6 +15,18 @@ anyhow = "1.0.95"
 clap = { version = "4.5.27", features = ["derive"] }
 tempfile = "3.15.0"
 
+[[bin]]
+name = "rasm"
+path = "src/bin/rasm.rs"
+
+[[bin]]
+name = "rmon"
+path = "src/bin/rmon.rs"
+
+[[bin]]
+name = "rdis"
+path = "src/bin/rdis.rs"
+
 [dev-dependencies]
 assert_cmd = "2.0.16"
 claims = "0.7.1"
