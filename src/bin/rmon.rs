@@ -1,6 +1,6 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
-use std::io::{stdin, stdout, Write};
+use std::io::{Write, stdin, stdout};
 
 use rmachine::{prelude::*, try_image_from_bytes};
 
@@ -30,10 +30,8 @@ fn main() -> Result<()> {
     let mut input = String::new();
 
     loop {
-        if !debug {
-            if let Ok(()) = m.run(&mut sys) {
-                break;
-            }
+        if !debug && let Ok(()) = m.run(&mut sys) {
+            break;
         }
 
         print_state(&m);

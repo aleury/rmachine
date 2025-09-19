@@ -1,6 +1,3 @@
-.global _start
-
-.section .text
 _start:
   li a0, 1  # fd = 1 (stdout)
   la a1, helloworld

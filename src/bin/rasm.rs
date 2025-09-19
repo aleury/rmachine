@@ -13,7 +13,12 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     for filename in args.filenames {
-        build_exe(filename.as_str(), filename.strip_suffix(".s").unwrap())?;
+        build_exe(
+            filename.as_str(),
+            filename
+                .strip_suffix(".s")
+                .expect("filename must end with .s"),
+        )?;
     }
 
     Ok(())

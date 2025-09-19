@@ -1,5 +1,5 @@
 #![allow(clippy::cast_sign_loss)]
-use anyhow::{anyhow, bail, Context, Ok, Result};
+use anyhow::{Context, Ok, Result, anyhow, bail};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
@@ -703,7 +703,7 @@ fn assemble_program(program: ast::Program) -> Result<Image> {
                         data.push(c as Word);
                     }
                 }
-                _ => todo!(),
+                _ => todo!("implement directive {directive:#?}"),
             },
             Line::Instruction(instruction) => {
                 let mut instruction =

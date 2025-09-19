@@ -1,6 +1,3 @@
-.global _start
-
-.section .text
 _start:
     li a0, 5    # let mut num = 5;
     li a1, 1    # let mut result = 1;

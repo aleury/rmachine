@@ -1,9 +1,14 @@
 [package]
 name = "rmachine"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+description = "A simple 32-bit RISC CPU emulator and assembler"
+repository = "https://github.com/aleury/rmachine"
+homepage = "https://github.com/aleury/rmachine"
+keywords = ["cpu", "emulator", "risc", "assembler", "virtual-machine"]
+categories = ["emulators", "command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.95"

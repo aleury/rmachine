@@ -2,7 +2,7 @@ use crate::{
     ast::{Directive, Identifier, Instruction, Line, Operand, Program},
     lexer::{Token, TokenType},
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::{
     error::Error,
     fmt::{Debug, Display},
@@ -78,7 +78,7 @@ impl Parser {
         self.expect(TokenType::Dot)?;
         let ident = self.identifier()?;
         let directive = match ident.as_ref() {
-            "globl" => {
+            "global" => {
                 let symbol = self.identifier()?;
                 Directive::Global(symbol.to_string())
             }
@@ -91,7 +91,7 @@ impl Parser {
                 let string = self.expect(TokenType::String)?;
                 Directive::Ascii(string.lexeme)
             }
-            _ => todo!(),
+            _ => todo!("implement directive {}", ident),
         };
         Ok(Line::Directive(directive))
     }

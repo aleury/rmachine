@@ -2,76 +2,99 @@
 [![Nightly](https://github.com/aleury/rmachine/actions/workflows/nightly.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/nightly.yaml)
 [![Security audit](https://github.com/aleury/rmachine/actions/workflows/audit.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/audit.yaml)
 
-# TODO
-
-- [x] Improve parser errors
-- [x] Implement ebreak
-- [x] Make machine output configurable, i.e. terminal, buffer, etc. "type state pattern"
-- [x] Parse, assemble, and implement `lb`
-- [x] Fix `load_image_from_bytes` for new exe format
-- [x] Refactor `rd` to use `load_image_from_bytes`
-- [ ] Rename .ascii directive to .utf8
-
 # R-Machine
 
-A simple 32-bit RISC CPU.
+A simple 32-bit RISC CPU emulator and assembler written in Rust.
 
-# Architecture
+## Overview
 
-The 32-bit version of the R-machine has the following 16 32-bit registers:
+R-Machine is an educational project that implements a minimal RISC (Reduced Instruction Set Computer) architecture. It includes:
 
-| ID | Name | Purpose |
-| --- | ---- | -------|
-| 0000 | x0 | Hardwired to zero |
-| 0001 - 1101 | a0 - a12 | General purpose registers |
-| 1110 | ra | Return address |
-| 1111 | sp | Stack pointer |
+- A 32-bit CPU emulator with 16 registers
+- An assembler that converts assembly code to machine code
+- A debugger for step-by-step execution
+- Support for basic arithmetic, logical, and control flow operations
 
-# Instruction Encoding
+## Features
 
-Each instruction is 32-bits in length and is encoded as follows:
+- **Simple Architecture**: 16 32-bit registers with clear purposes
+- **Rich Instruction Set**: 23 instructions covering arithmetic, logic, branching, and memory operations
+- **Development Tools**: Includes assembler (`rasm`), debugger (`rmon`), and disassembler (`rdis`)
+- **Educational Focus**: Clean, understandable implementation ideal for learning about CPU design
 
-| 31 - 17 | 16 - 13 | 12 - 9 | 8 - 5 | 4 - 0 |
-| ------- | ------- | ------ | ----- | ----- |
-| imm | rs2 | rs1 | rd | opcode |
+## Installation
 
-- The opcode field is 5-bits in length and specifies the operation to be performed.
-- The rd, rs1, and rs2 fields are 4-bits in length and specify the destination register and source registers respectively.
-- The imm field is 15-bits in length and specifies an immediate value.
+```bash
+cargo install rmachine
+```
 
-## Instruction Set
+Or build from source:
 
-| Opcode | Mnemonic | Description |
-| ------ | -------- | ----------- |
-| 00000 | - | Invalid instruction  |
-| 00001 | LI | Load Immediate; rd = imm |
-| 00010 | ADD | Add; rd = rs1 + rs2 + imm |
-| 00011 | AND | Bitwise And; rd = rs1 & rs2 |
-| 00100 | ANDI | Bitwise And Immediate; rd = rs1 & imm |
-| 00101 | OR | Bitwise Or; rd = rs1 \| rs2 |
-| 00110 | ORI | Bitwise Or Immediate; rd = rs1 \| imm |
-| 00111 | XOR | Bitwise Xor; rd = rs1 ^ rs2 |
-| 01000 | XORI | Bitwise Xor Immediate; rd = rs1 ^ imm |
-| 01001 | SUB | Subtract; rd = rs1 - (rs2 + imm) |
-| 01010 | SHL | Shift Left; rd = rs1 << (rs2 + imm) |
-| 01011 | SHR | Shift Right; rd = rs1 >> (rs2 + imm) |
-| 01100 | JMP | Unconditional Jump; pc = imm |
-| 01101 | JMPL | Unconditional Jump to 32-bit address in next word |
-| 01110 | RET | Return to address saved in ra from previous jump |
-| 01111 | BEQ | Branch if Equal; pc += imm if rs1 == rs2 |
-| 10000 | BNE | Branch if Not Equal; pc += imm if rs1 != rs2 |
-| 10001 | BLT | Branch if Less Than; pc += imm if rs1 < rs2 |
-| 10010 | BGE | Branch if Greater Than or Equal; pc += imm if rs1 >= rs2 |
-| 10011 | PUSH | Push value in rs1 to stack, adjusting sp |
-| 10100 | POP | Pop value from stack to rd, adjusting sp |
-| 10101 | LOAD | Copy value from memory address rd = rs1 + rs2 + imm |
-| 10110 | STORE | Copy value from rs2 to memory address rs1 + rs2 + imm |
-| 10111 | ECALL | Make a call to surrounding execution environment |
-| 11000 | EBREAK | Transfer control back to debugging environment |
-| - | - | Unused |
+```bash
+git clone https://github.com/aleury/rmachine
+cd rmachine
+cargo build --release
+```
 
-# Notes
+## Usage
 
-https://github.com/bitfield/rmachine
+### Assembler (rasm)
 
-https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf
+Assemble source code into executable format:
+
+```bash
+rasm input.s    # Creates input (executable without extension)
+```
+
+### Debugger (rmon)
+
+Run programs with debugging support:
+
+```bash
+rmon program.rmx       # Run with debugger
+rmon program.rmx -d    # Start in debug mode
+```
+
+### Disassembler (rdis)
+
+Disassemble executable files:
+
+```bash
+rdis program.rmx
+```
+
+## Example
+
+```asm
+; Simple counter program
+    li a0, 0        ; Initialize counter
+loop:
+    addi a0, a0, 1  ; Increment
+    li a1, 10       ; Load limit
+    blt a0, a1, loop ; Loop if counter < 10
+    ecall           ; Exit
+```
+
+## Examples
+
+The `examples/` directory contains sample R-Machine assembly programs:
+
+- `ex1.s` - Hello World program demonstrating system calls
+- `ex2.s` - Example showcasing arithmetic operations
+- `strlen.s` - String length calculation implementation
+
+Run an example:
+
+```bash
+rasm examples/ex1.s
+rmon examples/ex1
+```
+
+## Documentation
+
+- [Architecture and Instruction Set](docs/design.md)
+- [Todo List](docs/todos.md)
+
+## License
+
+This project is dual-licensed under MIT OR Apache-2.0.

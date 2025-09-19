@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #![allow(
     unused,
     clippy::cast_possible_truncation,
