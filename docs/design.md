@@ -1,60 +1,156 @@
-# R-Machine Design Documentation
+# RISC-V Architecture Design Documentation
 
-## Architecture
+## Overview
 
-The 32-bit version of the R-machine has the following 16 32-bit registers:
+This project implements a subset of the RISC-V RV32I (32-bit integer) instruction set architecture. RISC-V is an open-source instruction set architecture (ISA) based on established reduced instruction set computer (RISC) principles.
 
-| ID | Name | Purpose |
-| --- | ---- | -------|
-| 0000 | x0 | Hardwired to zero |
-| 0001 - 1101 | a0 - a12 | General purpose registers |
-| 1110 | ra | Return address |
-| 1111 | sp | Stack pointer |
+## Registers
+
+The RISC-V RV32I architecture defines 32 general-purpose registers, each 32 bits wide. Currently, we implement 18 of these registers:
+
+| Register | ABI Name | Description | Preserved across calls? |
+| -------- | -------- | ----------- | ---------------------- |
+| x0 | zero | Hardwired to zero | N/A |
+| x1 | ra | Return address | No |
+| x2 | sp | Stack pointer | Yes |
+| x3 | gp | Global pointer | N/A |
+| x4 | tp | Thread pointer | N/A |
+| x5 | t0 | Temporary register 0 | No |
+| x6 | t1 | Temporary register 1 | No |
+| x7 | t2 | Temporary register 2 | No |
+| x8 | s0/fp | Saved register 0 / Frame pointer | Yes |
+| x9 | s1 | Saved register 1 | Yes |
+| x10 | a0 | Function argument 0 / Return value 0 | No |
+| x11 | a1 | Function argument 1 / Return value 1 | No |
+| x12 | a2 | Function argument 2 | No |
+| x13 | a3 | Function argument 3 | No |
+| x14 | a4 | Function argument 4 | No |
+| x15 | a5 | Function argument 5 | No |
+| x16 | a6 | Function argument 6 | No |
+| x17 | a7 | Function argument 7 | No |
+
+### Register Conventions
+
+- **zero (x0)**: Always contains the value 0. Writes to this register are ignored.
+- **ra (x1)**: Used by the JAL and JALR instructions to save the return address.
+- **sp (x2)**: Points to the top of the stack, grows downward.
+- **gp (x3)**: Used for position-independent code.
+- **tp (x4)**: Used for thread-local storage.
+- **t0-t2**: Temporary registers that can be used freely by functions.
+- **s0-s1**: Saved registers that must be preserved across function calls.
+- **a0-a7**: Used for function arguments and return values. a0 and a1 also hold return values.
 
 ## Instruction Encoding
 
-Each instruction is 32-bits in length and is encoded as follows:
+RISC-V uses several instruction formats. The base RV32I ISA uses 32-bit fixed-length instructions aligned on 32-bit boundaries.
 
-| 31 - 17 | 16 - 13 | 12 - 9 | 8 - 5 | 4 - 0 |
-| ------- | ------- | ------ | ----- | ----- |
-| imm | rs2 | rs1 | rd | opcode |
+### Instruction Formats
 
-- The opcode field is 5-bits in length and specifies the operation to be performed.
-- The rd, rs1, and rs2 fields are 4-bits in length and specify the destination register and source registers respectively.
-- The imm field is 15-bits in length and specifies an immediate value.
+#### R-Type (Register)
+Used for register-register operations.
 
-## Instruction Set
+| 31-25 | 24-20 | 19-15 | 14-12 | 11-7 | 6-0 |
+|-------|-------|-------|-------|------|-----|
+| funct7 | rs2 | rs1 | funct3 | rd | opcode |
 
-| Opcode | Mnemonic | Description |
-| ------ | -------- | ----------- |
-| 00000 | - | Invalid instruction  |
-| 00001 | LI | Load Immediate; rd = imm |
-| 00010 | ADD | Add; rd = rs1 + rs2 + imm |
-| 00011 | AND | Bitwise And; rd = rs1 & rs2 |
-| 00100 | ANDI | Bitwise And Immediate; rd = rs1 & imm |
-| 00101 | OR | Bitwise Or; rd = rs1 \| rs2 |
-| 00110 | ORI | Bitwise Or Immediate; rd = rs1 \| imm |
-| 00111 | XOR | Bitwise Xor; rd = rs1 ^ rs2 |
-| 01000 | XORI | Bitwise Xor Immediate; rd = rs1 ^ imm |
-| 01001 | SUB | Subtract; rd = rs1 - (rs2 + imm) |
-| 01010 | SHL | Shift Left; rd = rs1 << (rs2 + imm) |
-| 01011 | SHR | Shift Right; rd = rs1 >> (rs2 + imm) |
-| 01100 | JMP | Unconditional Jump; pc = imm |
-| 01101 | JMPL | Unconditional Jump to 32-bit address in next word |
-| 01110 | RET | Return to address saved in ra from previous jump |
-| 01111 | BEQ | Branch if Equal; pc += imm if rs1 == rs2 |
-| 10000 | BNE | Branch if Not Equal; pc += imm if rs1 != rs2 |
-| 10001 | BLT | Branch if Less Than; pc += imm if rs1 < rs2 |
-| 10010 | BGE | Branch if Greater Than or Equal; pc += imm if rs1 >= rs2 |
-| 10011 | PUSH | Push value in rs1 to stack, adjusting sp |
-| 10100 | POP | Pop value from stack to rd, adjusting sp |
-| 10101 | LOAD | Copy value from memory address rd = rs1 + rs2 + imm |
-| 10110 | STORE | Copy value from rs2 to memory address rs1 + rs2 + imm |
-| 10111 | ECALL | Make a call to surrounding execution environment |
-| 11000 | EBREAK | Transfer control back to debugging environment |
-| - | - | Unused |
+#### I-Type (Immediate)
+Used for immediate operations, loads, and system instructions.
+
+| 31-20 | 19-15 | 14-12 | 11-7 | 6-0 |
+|-------|-------|-------|------|-----|
+| imm[11:0] | rs1 | funct3 | rd | opcode |
+
+#### S-Type (Store)
+Used for store instructions.
+
+| 31-25 | 24-20 | 19-15 | 14-12 | 11-7 | 6-0 |
+|-------|-------|-------|-------|------|-----|
+| imm[11:5] | rs2 | rs1 | funct3 | imm[4:0] | opcode |
+
+#### B-Type (Branch)
+Used for conditional branch instructions.
+
+| 31-25 | 24-20 | 19-15 | 14-12 | 11-7 | 6-0 |
+|-------|-------|-------|-------|------|-----|
+| imm[12,10:5] | rs2 | rs1 | funct3 | imm[4:1,11] | opcode |
+
+#### U-Type (Upper immediate)
+Used for LUI and AUIPC instructions.
+
+| 31-12 | 11-7 | 6-0 |
+|-------|------|-----|
+| imm[31:12] | rd | opcode |
+
+#### J-Type (Jump)
+Used for JAL instruction.
+
+| 31-12 | 11-7 | 6-0 |
+|-------|------|-----|
+| imm[20,10:1,11,19:12] | rd | opcode |
+
+## Currently Implemented Instructions
+
+The following subset of RV32I instructions are currently implemented:
+
+| Instruction | Type | Opcode | Description |
+|-------------|------|--------|-------------|
+| ADD | R | 0110011 | rd = rs1 + rs2 |
+| ADDI | I | 0010011 | rd = rs1 + sign_extend(imm) |
+| AUIPC | U | 0010111 | rd = pc + (imm << 12) |
+| BEQ | B | 1100011 | if (rs1 == rs2) pc += sign_extend(imm) |
+| ECALL | I | 1110011 | System call |
+| JAL | J | 1101111 | rd = pc + 4; pc += sign_extend(imm) |
+| LB | I | 0000011 | rd = sign_extend(M[rs1 + imm][7:0]) |
+| LUI | U | 0110111 | rd = imm << 12 |
+| UNIMP | - | - | Unimplemented instruction trap |
+
+### System Calls (ECALL)
+
+The ECALL instruction is used to make system calls. The system call number is passed in register a7, with arguments in a0-a5.
+
+Currently implemented system calls:
+
+| Number | Name | Arguments | Description |
+|--------|------|-----------|-------------|
+| 64 | write | a0=fd, a1=buffer, a2=count | Write to file descriptor |
+
+## Memory Model
+
+- Memory is byte-addressable
+- Little-endian byte ordering
+- 32-bit addresses
+- Load/store instructions are the only way to access memory
+
+## Program Counter (PC)
+
+- 32-bit program counter
+- Incremented by 4 after each instruction (except for branches and jumps)
+- Must be aligned on 4-byte boundaries
+
+## Future Implementation Goals
+
+To achieve full RV32I compliance, the following instructions need to be implemented:
+
+### Arithmetic and Logical
+- SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND
+- SLLI, SLTI, SLTIU, XORI, SRLI, SRAI, ORI, ANDI
+
+### Load and Store
+- LH, LW, LBU, LHU
+- SB, SH, SW
+
+### Branches
+- BNE, BLT, BGE, BLTU, BGEU
+
+### Jumps
+- JALR
+
+### Memory Ordering
+- FENCE
 
 ## References
 
 - https://github.com/bitfield/rmachine
-- https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf
+- [RISC-V Specification v2.2](https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf)
+- [RISC-V Unprivileged ISA Specification](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf)
+- [RISC-V ABI Documentation](https://github.com/riscv/riscv-elf-psabi-doc)

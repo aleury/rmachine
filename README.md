@@ -3,28 +3,28 @@
 [![Security audit](https://github.com/aleury/rmachine/actions/workflows/audit.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/audit.yaml)
 
 
-# R-Machine
+# R-Machine: RISC-V Emulator
 
 <img src="logo.png" width="200"/>
 
 
-A simple 32-bit RISC CPU emulator and assembler written in Rust.
+A RISC-V RV32I emulator and assembler written in Rust.
 
 ## Overview
 
-R-Machine is an educational project that implements a minimal RISC (Reduced Instruction Set Computer) architecture. It includes:
+R-Machine is an educational project that implements a subset of the RISC-V RV32I (32-bit integer) instruction set architecture. It includes:
 
-- A 32-bit CPU emulator with 16 registers
+- A 32-bit RISC-V CPU emulator with 18 registers (subset of RV32I's 32 registers)
 - An assembler that converts assembly code to machine code
 - A debugger for step-by-step execution
-- Support for basic arithmetic, logical, and control flow operations
+- Support for 9 RISC-V instructions (with more planned)
 
 ## Features
 
-- **Simple Architecture**: 16 32-bit registers with clear purposes
-- **Rich Instruction Set**: 23 instructions covering arithmetic, logic, branching, and memory operations
+- **Simple Architecture**: 18 32-bit registers with clear purposes
+- **Rich Instruction Set**: 9 instructions covering arithmetic, logic, branching, and memory operations
 - **Development Tools**: Includes assembler (`rasm`), debugger (`rmon`), and disassembler (`rdis`)
-- **Educational Focus**: Clean, understandable implementation ideal for learning about CPU design
+- **Educational Focus**: Clean, understandable implementation ideal for learning about CPU design and RISC-V architecture
 
 ## Installation
 
@@ -83,7 +83,7 @@ rmon hello.rmx
 
 ## Documentation
 
-- [Architecture and Instruction Set](docs/design.md)
+- [RISC-V Architecture and Instruction Set](docs/design.md)
 - [Todo List](docs/todos.md)
 
 ## License
