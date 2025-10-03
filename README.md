@@ -69,8 +69,6 @@ rdis program.rmx
 The `examples/` directory contains sample R-Machine assembly programs:
 
 - `ex1.s` - Hello World program demonstrating system calls
-- `ex2.s` - Example showcasing arithmetic operations
-- `strlen.s` - String length calculation implementation
 
 Run an example:
 
