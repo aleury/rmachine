@@ -37,9 +37,9 @@ fn main() -> Result<()> {
 
         // Print success message
         if args.output.is_some() {
-            println!("Assembled {} -> {}", input_file, output_path);
+            println!("Assembled {input_file} -> {output_path}");
         } else {
-            println!("Assembled {}", input_file);
+            println!("Assembled {input_file}");
         }
     }
 
