@@ -4,8 +4,6 @@
 
 # R-Machine
 
-![R-Machine logo](logo.png)
-
 A simple 32-bit RISC CPU emulator and assembler written in Rust.
 
 ## Overview
