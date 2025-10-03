@@ -64,18 +64,6 @@ Disassemble executable files:
 rdis program.rmx
 ```
 
-## Example
-
-```asm
-; Simple counter program
-    li a0, 0        ; Initialize counter
-loop:
-    addi a0, a0, 1  ; Increment
-    li a1, 10       ; Load limit
-    blt a0, a1, loop ; Loop if counter < 10
-    ecall           ; Exit
-```
-
 ## Examples
 
 The `examples/` directory contains sample R-Machine assembly programs:
