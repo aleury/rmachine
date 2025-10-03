@@ -2,7 +2,11 @@
 [![Nightly](https://github.com/aleury/rmachine/actions/workflows/nightly.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/nightly.yaml)
 [![Security audit](https://github.com/aleury/rmachine/actions/workflows/audit.yaml/badge.svg)](https://github.com/aleury/rmachine/actions/workflows/audit.yaml)
 
+
 # R-Machine
+
+<img src="logo.png" width="200"/>
+
 
 A simple 32-bit RISC CPU emulator and assembler written in Rust.
 
