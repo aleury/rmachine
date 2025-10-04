@@ -2,3 +2,4 @@
 /mutants.out*
 /testdata/hello*
 !/testdata/**/*.s
+.claude
