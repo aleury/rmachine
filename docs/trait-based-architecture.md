@@ -1960,48 +1960,252 @@ Combines the best of all approaches:
 
 ---
 
+## Migration Strategy: Keeping Everything Working
+
+The project currently has working code (~2400 lines) with tests, binaries (rasm, rmon, rdis), and a public API. We need to migrate to the workspace structure **without breaking anything**.
+
+### The "Strangler Fig" Pattern
+
+We'll use an **incremental migration** strategy where new architecture grows alongside the old code:
+
+1. **Create workspace structure with legacy crate** - all current code moves to `crates/rmachine-legacy/`
+2. **Use re-exports for compatibility** - root `src/lib.rs` re-exports legacy crate
+3. **Extract incrementally** - move types to new crates one at a time
+4. **Build new architecture in parallel** - implement traits while legacy code still works
+5. **Switch consumers gradually** - update binaries one by one
+6. **Remove legacy when complete** - delete legacy crate and shim
+
+**Key insight:** Tests and binaries continue working at every step because we maintain the same public API through re-exports.
+
+### Workspace Structure During Migration
+
+**Initial state (after Phase 0):**
+```
+rmachine/
+├── Cargo.toml                    # Workspace root
+├── crates/
+│   ├── rmachine-legacy/          # ALL current code (temporary)
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── asm.rs, ast.rs, exe.rs, lexer.rs
+│   │       ├── machine.rs, parser.rs, prelude.rs
+│   │       ├── lib.rs
+│   │       └── bin/
+│   │           ├── rasm.rs
+│   │           ├── rmon.rs
+│   │           └── rdis.rs
+│   ├── rmachine-macros/          # Empty skeleton (for Phase 2)
+│   ├── rmachine-core/            # Empty skeleton (for Phase 1)
+│   ├── rmachine-rv32i/           # Empty skeleton (for Phase 3)
+│   └── rmachine-cli/             # Empty skeleton (for Phase 0)
+├── src/
+│   └── lib.rs                    # Compatibility shim: `pub use rmachine_legacy::*;`
+└── tests/
+    └── cli.rs                    # Unchanged - uses rmachine::build_exe
+```
+
+**Final state (after Phase 6):**
+```
+rmachine/
+├── Cargo.toml                    # Workspace root
+├── crates/
+│   ├── rmachine-macros/          # Proc macros
+│   ├── rmachine-core/            # Core traits + GenericMachine
+│   ├── rmachine-rv32i/           # RV32I implementation
+│   └── rmachine-cli/             # CLI binaries
+└── tests/                        # Updated to use new API
+```
+
+---
+
 ## Implementation Roadmap
 
-### Phase 0: Workspace Setup (Week 1)
+### Phase 0: Workspace Setup with Legacy Crate (Week 1)
 
-**Goal:** Restructure project into Cargo workspace
+**Goal:** Create workspace structure while keeping everything working
 
-1. Create workspace root `Cargo.toml`
-   - Define workspace members
-   - Set up workspace-level package metadata
-   - Configure resolver = "2"
+**Current state:** Single crate with library + 3 binaries, ~2400 lines, working tests
 
-2. Create crate directories
-   - `mkdir -p crates/{rmachine-macros,rmachine-core,rmachine-rv32i,rmachine-cli}`
-   - Create `Cargo.toml` for each crate
+1. **Create workspace root**
+   ```bash
+   # Backup current Cargo.toml
+   cp Cargo.toml Cargo.toml.backup
 
-3. Migrate existing code
-   - Move core types to `rmachine-core` (machine, state)
-   - Move binaries to `rmachine-cli` (rasm, rmon, rdis)
-   - Set up crate dependencies
+   # Create workspace Cargo.toml
+   cat > Cargo.toml <<EOF
+   [workspace]
+   members = [
+       "crates/rmachine-legacy",
+       "crates/rmachine-macros",
+       "crates/rmachine-core",
+       "crates/rmachine-rv32i",
+       "crates/rmachine-cli",
+   ]
+   resolver = "2"
 
-4. Verify workspace builds
-   - `cargo build --workspace`
-   - `cargo test --workspace`
-   - Fix any import/module issues
+   [workspace.package]
+   version = "0.1.0"
+   edition = "2024"
+   license = "MIT OR Apache-2.0"
+   repository = "https://github.com/aleury/rmachine"
+   EOF
+   ```
+
+2. **Move ALL current code to legacy crate**
+   ```bash
+   mkdir -p crates/rmachine-legacy/src/bin
+
+   # Move all source files
+   mv src/* crates/rmachine-legacy/src/
+
+   # Move Cargo.toml.backup to legacy crate and rename
+   mv Cargo.toml.backup crates/rmachine-legacy/Cargo.toml
+
+   # Update legacy crate Cargo.toml
+   # Change: name = "rmachine-legacy"
+   # Keep all dependencies and bin definitions
+   ```
+
+3. **Create compatibility shim**
+   ```bash
+   # Create new root src/lib.rs
+   cat > src/lib.rs <<EOF
+   //! Compatibility shim - re-exports rmachine-legacy
+   //! This allows existing tests and users to work unchanged
+   pub use rmachine_legacy::*;
+   EOF
+   ```
+
+4. **Create empty skeleton crates**
+   ```bash
+   # Create skeleton directories
+   mkdir -p crates/rmachine-{macros,core,rv32i,cli}/src
+
+   # Create placeholder Cargo.toml files
+   # (will be populated in later phases)
+   ```
+
+5. **Update root Cargo.toml to depend on legacy**
+   ```toml
+   # Add to workspace root Cargo.toml
+   [package]
+   name = "rmachine"
+   version.workspace = true
+   edition.workspace = true
+
+   [dependencies]
+   rmachine-legacy = { path = "crates/rmachine-legacy" }
+   ```
+
+6. **Verify everything still works**
+   ```bash
+   cargo build --workspace
+   cargo test --workspace
+   cargo run --bin rasm -- testdata/hello.s
+   cargo run --bin rmon -- hello
+   cargo run --bin rdis -- hello
+   ```
+
+**Result:** Workspace structure exists, but ALL code still works through re-exports. Tests pass unchanged.
+
+### Phase 0b: Move Binaries to CLI Crate (Week 1 continued)
+
+**Goal:** Extract binaries while keeping them working
+
+1. **Create `rmachine-cli` crate structure**
+   ```bash
+   # Create bin directory
+   mkdir -p crates/rmachine-cli/src/bin
+
+   # Copy binaries (don't move yet)
+   cp crates/rmachine-legacy/src/bin/*.rs crates/rmachine-cli/src/bin/
+
+   # Create Cargo.toml
+   cat > crates/rmachine-cli/Cargo.toml <<EOF
+   [package]
+   name = "rmachine-cli"
+   version.workspace = true
+   edition.workspace = true
+
+   [[bin]]
+   name = "rasm"
+   path = "src/bin/rasm.rs"
+
+   [[bin]]
+   name = "rmon"
+   path = "src/bin/rmon.rs"
+
+   [[bin]]
+   name = "rdis"
+   path = "src/bin/rdis.rs"
+
+   [dependencies]
+   rmachine-legacy = { path = "../rmachine-legacy" }
+   anyhow = "1.0"
+   clap = { version = "4.5", features = ["derive"] }
+   EOF
+   ```
+
+2. **Test new binary locations**
+   ```bash
+   cargo build --bin rasm -p rmachine-cli
+   cargo build --bin rmon -p rmachine-cli
+   cargo build --bin rdis -p rmachine-cli
+   ```
+
+3. **Remove binaries from legacy crate**
+   ```bash
+   # Remove bin definitions from rmachine-legacy/Cargo.toml
+   # Delete rmachine-legacy/src/bin/
+   rm -rf crates/rmachine-legacy/src/bin
+   ```
+
+4. **Verify workspace still works**
+   ```bash
+   cargo build --workspace
+   cargo test --workspace
+   cargo run --bin rasm -- testdata/hello.s
+   ```
+
+**Result:** Binaries are in separate crate, but still use legacy implementation. Tests unchanged.
 
 ### Phase 1: Core Infrastructure (Week 2)
 
-**Goal:** Set up the trait and basic types in `rmachine-core`
+**Goal:** Build new trait system in `rmachine-core` (in parallel with legacy)
 
-1. Create `crates/rmachine-core/src/instruction_set/mod.rs`
-   - Define `InstructionSet` trait
-   - Define `InstructionSpecTrait`
+1. **Create `crates/rmachine-core/src/instruction_set/mod.rs`**
+   - Define `InstructionSet` trait with associated types
+   - Define `InstructionSpecTrait` for generic access
    - Define `OperandPattern`, `Format` enums
+   - **Note:** This is NEW code, doesn't replace legacy yet
 
-2. Create `crates/rmachine-core/src/machine.rs`
-   - Implement `MachineState`
+2. **Create `crates/rmachine-core/src/state.rs`**
+   - Implement new `MachineState` (different from legacy)
+   - Generic register file, memory, special registers
+   - Flag support for different architectures
+
+3. **Create `crates/rmachine-core/src/machine.rs`**
    - Implement `GenericMachine<I: InstructionSet>`
-   - Generic `step()` method
+   - Generic `step()`, `run()`, `load_program()` methods
+   - **Note:** Completely new implementation
 
-3. Add basic tests to `rmachine-core`
+4. **Add basic tests to `rmachine-core`**
    - Test `MachineState` register/memory operations
    - Test generic structure compiles
+   - Create mock ISA for testing
+
+5. **Set up `rmachine-core/Cargo.toml`**
+   ```toml
+   [package]
+   name = "rmachine-core"
+   version.workspace = true
+   edition.workspace = true
+
+   [dependencies]
+   anyhow = "1.0"
+   ```
+
+**Result:** New trait-based core exists alongside legacy. Legacy code still used by binaries.
 
 ### Phase 2: Proc Macro Foundation (Week 3)
 
@@ -2025,44 +2229,95 @@ Combines the best of all approaches:
    - Create test ISA with 2-3 instructions
    - Verify generated code compiles
 
-### Phase 3: RV32I Migration (Week 4-5)
+### Phase 3: RV32I Implementation (Week 4-5)
 
-**Goal:** Migrate existing RISC-V implementation to `rmachine-rv32i` crate
+**Goal:** Build new RISC-V implementation using trait system (parallel to legacy)
 
-1. Create `crates/rmachine-rv32i/instructions/rv32i.toml`
+1. **Create `crates/rmachine-rv32i/instructions/rv32i.toml`**
    - Port current 9 instructions to TOML format
    - Add encoding metadata (opcode, funct3, funct7, format)
 
-2. Create `crates/rmachine-rv32i/src/lib.rs`
+2. **Create `crates/rmachine-rv32i/src/lib.rs`**
    - Define `RV32I` struct with `#[derive(InstructionSet)]`
-   - Define `RV32ISpec` with RISC-V specific fields
+   - Define `RV32ISpec` with RISC-V specific fields (opcode, funct3, funct7, format)
    - Define `RV32Context` and helper methods
-   - Implement `decode_operands()`
+   - Implement `decode_operands()` for RISC-V formats
    - Implement `create_context()`
 
-3. Implement instruction methods
-   - Port existing instruction logic to methods
-   - Test each instruction individually
+3. **Implement instruction methods**
+   - Port existing instruction logic from legacy to new methods
+   - Test each instruction individually using `GenericMachine<RV32I>`
+   - **Note:** Legacy code still exists and is used by binaries
 
-4. Generate execute dispatcher
-   - Extend macro to generate `execute()` match
-   - Validate method existence at compile time
+4. **Set up `rmachine-rv32i/Cargo.toml`**
+   ```toml
+   [package]
+   name = "rmachine-rv32i"
+   version.workspace = true
+   edition.workspace = true
 
-5. Implement PEST-based parsing
-   - Add `pest` and `pest_derive` dependencies to `rmachine-rv32i/Cargo.toml`
-   - Create `crates/rmachine-rv32i/grammars/` directory
-   - Write `crates/rmachine-rv32i/grammars/rv32i.pest` with RISC-V syntax rules
+   [dependencies]
+   rmachine-core = { path = "../rmachine-core" }
+   rmachine-macros = { path = "../rmachine-macros" }
+   anyhow = "1.0"
+   pest = "2.7"
+   pest_derive = "2.7"
+   ```
+
+5. **Implement PEST-based parsing**
+   - Create `crates/rmachine-rv32i/grammars/rv32i.pest` with RISC-V syntax rules
    - Add `#[derive(Parser)]` with `#[grammar = "grammars/rv32i.pest"]` to RV32I
    - Implement `parse_assembly()` in RV32I trait implementation
    - Convert PEST pairs to AST using `lookup()` for validation
-   - Update all tests to use `RV32I::parse_assembly(source)`
-   - Verify all existing tests pass
-   - Delete old lexer/parser from `rmachine-core` (~700 lines saved!)
+   - Test parsing with sample assembly programs
 
-6. Update CLI binaries in `rmachine-cli`
-   - Update imports to use `rmachine-core` and `rmachine-rv32i`
-   - Use generated lookup functions for encoding
-   - Remove old encoding match statements
+6. **Create new assembler/disassembler using new implementation**
+   - Add functions in `rmachine-rv32i` for assembly/disassembly
+   - Test against legacy implementation output
+   - **Don't update binaries yet** - legacy still used
+
+**Result:** Complete new RV32I implementation exists and is tested. Legacy code unchanged, binaries still work.
+
+### Phase 3b: Cutover to New Implementation (Week 6)
+
+**Goal:** Switch binaries to use new trait-based implementation
+
+1. **Update `rmachine-cli` dependencies**
+   ```toml
+   # In crates/rmachine-cli/Cargo.toml
+   [dependencies]
+   rmachine-core = { path = "../rmachine-core" }
+   rmachine-rv32i = { path = "../rmachine-rv32i" }
+   # Remove: rmachine-legacy
+   ```
+
+2. **Update `rasm` binary**
+   - Replace `use rmachine_legacy::*` with `use rmachine_rv32i::RV32I`
+   - Use new assembly functions
+   - Test: `cargo run --bin rasm -- testdata/hello.s`
+
+3. **Update `rmon` binary**
+   - Replace legacy Machine with `GenericMachine<RV32I>`
+   - Update register access to use new API
+   - Test: `cargo run --bin rmon -- hello`
+
+4. **Update `rdis` binary**
+   - Use new disassembly functions from `rmachine-rv32i`
+   - Test: `cargo run --bin rdis -- hello`
+
+5. **Update integration tests**
+   - Change `tests/cli.rs` to use new API
+   - Verify all tests still pass
+
+6. **Update root compatibility shim (optional)**
+   ```rust
+   // src/lib.rs - can now point to new implementation
+   pub use rmachine_core::*;
+   pub use rmachine_rv32i::*;
+   // Or keep re-exporting legacy if external users depend on it
+   ```
+
+**Result:** All binaries use new trait-based implementation. Legacy can be removed (or kept for compatibility).
 
 ### Phase 4: Complete RV32I (Week 6-7)
 
@@ -2118,24 +2373,61 @@ Combines the best of all approaches:
    - Prove context and syntax flexibility
    - Add example programs in 6502 assembly
 
-### Phase 6: Documentation & Polish (Week 10)
+### Phase 6: Cleanup & Documentation (Week 10)
 
-**Goal:** Make it usable and teachable
+**Goal:** Remove legacy code and polish the project
 
-1. Write user documentation
-   - How to add instructions
-   - How to create new ISAs
-   - Architecture guide
+1. **Remove legacy crate (if not needed)**
+   ```bash
+   # If external users don't depend on rmachine-legacy
+   rm -rf crates/rmachine-legacy
 
-2. Create examples
+   # Remove from workspace members in root Cargo.toml
+   # Update root src/lib.rs to export new API directly
+   ```
+
+2. **Update root crate API**
+   ```rust
+   // src/lib.rs - final public API
+   pub use rmachine_core::{
+       instruction_set::*,
+       machine::*,
+       state::*,
+   };
+
+   // Re-export specific ISAs
+   pub use rmachine_rv32i as rv32i;
+   #[cfg(feature = "mos6502")]
+   pub use rmachine_mos6502 as mos6502;
+   ```
+
+3. **Write user documentation**
+   - How to add instructions to existing ISA
+   - How to create new ISA from scratch
+   - Architecture guide and design decisions
+   - API documentation with examples
+
+4. **Create examples**
    - Example programs for RISC-V
    - Example programs for 6502
    - ISA comparison examples
+   - Custom ISA tutorial
 
-3. Performance optimization
+5. **Performance optimization**
    - Profile hot paths
    - Add instruction caching if needed
-   - Benchmark vs old implementation
+   - Benchmark new vs old implementation
+   - Document performance characteristics
+
+6. **Final verification**
+   ```bash
+   cargo build --workspace --all-features
+   cargo test --workspace --all-features
+   cargo clippy --workspace --all-features
+   cargo doc --workspace --no-deps --open
+   ```
+
+**Result:** Clean workspace with only new trait-based architecture. Legacy code removed. Fully documented.
 
 ---
 
