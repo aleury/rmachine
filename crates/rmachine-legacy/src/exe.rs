@@ -48,7 +48,6 @@ pub fn try_image_from_bytes(bytes: &[u8]) -> Result<Image> {
 
 #[cfg(test)]
 mod tests {
-    use predicates::function;
     use tempfile::tempdir;
 
     use super::*;
@@ -59,7 +58,7 @@ mod tests {
         let mut exe_path = dir.path().to_owned();
         exe_path.push("test");
 
-        build_exe("testdata/li2.s", exe_path.clone()).unwrap();
+        build_exe("testdata/li.s", exe_path.clone()).unwrap();
 
         // header + text section length + text section + data section length + data section
         let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];

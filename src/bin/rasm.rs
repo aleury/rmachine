@@ -29,7 +29,7 @@ fn main() -> Result<()> {
         } else {
             // Default behavior: strip .s extension
             input_file.strip_suffix(".s").ok_or_else(|| {
-                anyhow::anyhow!("Input file must end with .s extension: {}", input_file)
+                anyhow::anyhow!("Input file must end with .s extension: {input_file}")
             })?
         };
 

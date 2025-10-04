@@ -81,11 +81,6 @@ rasm examples/ex1.s -o hello.rmx
 rmon hello.rmx
 ```
 
-## Documentation
-
-- [RISC-V Architecture and Instruction Set](docs/design.md)
-- [Todo List](docs/todos.md)
-
 ## License
 
 This project is dual-licensed under MIT OR Apache-2.0.

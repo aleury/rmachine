@@ -4,7 +4,7 @@ default:
 
 # Run all tests
 test:
-    cargo test
+    cargo test --workspace
 
 # Run tests with output
 test-verbose:
