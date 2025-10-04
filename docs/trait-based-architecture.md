@@ -1604,44 +1604,125 @@ rm src/lexer.rs src/parser.rs
 
 ### Project Structure
 
+The project is organized as a **Cargo workspace** with modular crates for clean separation of concerns:
+
 ```
 rmachine/
-├── Cargo.toml
-├── grammars/               # PEST grammars (NEW!)
-│   ├── rv32i.pest          # RISC-V assembly syntax
-│   ├── mos6502.pest        # 6502 assembly syntax
-│   └── ...
-├── instructions/           # Instruction specs
-│   ├── rv32i.toml          # RISC-V instruction encoding
-│   ├── mos6502.toml        # 6502 instruction encoding
-│   └── ...
-├── src/
-│   ├── instruction_set/
-│   │   └── mod.rs          # InstructionSet trait
-│   ├── isa/
-│   │   ├── rv32i.rs        # RV32I impl + PEST parser
-│   │   └── mos6502.rs      # MOS6502 impl + PEST parser
-│   └── machine.rs          # GenericMachine
-└── rmachine-macros/        # Proc macro crate
-    ├── Cargo.toml
-    └── src/
-        └── lib.rs
+├── Cargo.toml                      # Workspace definition
+├── crates/
+│   ├── rmachine-macros/            # Proc macro crate (required separate)
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── lib.rs              # #[derive(InstructionSet)] macro
+│   │
+│   ├── rmachine-core/              # Core framework
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── instruction_set/    # InstructionSet trait
+│   │       │   └── mod.rs
+│   │       ├── machine.rs          # GenericMachine<I>
+│   │       └── state.rs            # MachineState
+│   │
+│   ├── rmachine-rv32i/             # RV32I ISA implementation
+│   │   ├── Cargo.toml
+│   │   ├── grammars/
+│   │   │   └── rv32i.pest          # RISC-V assembly syntax
+│   │   ├── instructions/
+│   │   │   └── rv32i.toml          # RISC-V instruction encoding
+│   │   └── src/
+│   │       ├── lib.rs              # #[derive(InstructionSet)]
+│   │       ├── context.rs          # RV32Context<'a>
+│   │       ├── spec.rs             # RV32ISpec
+│   │       └── instructions.rs     # Instruction methods
+│   │
+│   ├── rmachine-mos6502/           # 6502 ISA (future)
+│   │   ├── Cargo.toml
+│   │   ├── grammars/
+│   │   │   └── mos6502.pest        # 6502 assembly syntax
+│   │   ├── instructions/
+│   │   │   └── mos6502.toml        # 6502 instruction encoding
+│   │   └── src/
+│   │       └── lib.rs
+│   │
+│   └── rmachine-cli/               # Command-line tools
+│       ├── Cargo.toml
+│       └── src/
+│           ├── bin/
+│           │   ├── rasm.rs         # Assembler
+│           │   ├── rmon.rs         # Monitor/debugger
+│           │   └── rdis.rs         # Disassembler
+│           └── common.rs           # Shared CLI utilities
+│
+├── README.md
+└── docs/
 ```
 
-**Per ISA, you have four components:**
+### Workspace Benefits
+
+**Required:**
+- **Proc macros must be separate crates** - Cargo requires `proc-macro = true` crates to be standalone
+
+**Performance:**
+- **Parallel compilation** - Independent crates compile concurrently
+- **Faster incremental builds** - Changing RV32I doesn't rebuild macros or core
+- **Selective testing** - Run ISA-specific tests without building everything
+
+**Modularity:**
+- **Clear separation** - Core framework vs ISA implementations vs CLI tools
+- **Self-contained ISAs** - Each ISA crate contains its grammar, TOML, and implementation
+- **Library-first design** - Users can depend on `rmachine-core` to implement custom ISAs
+- **Independent versioning** - ISAs can evolve at different rates
+
+**Extensibility:**
+- **Easy ISA addition** - Create new crate, add to workspace, implement trait
+- **Pluggable architecture** - ISAs are discovered via dependencies, not hardcoded
+- **Third-party ISAs** - External developers can publish ISA crates
+
+### Per ISA Components
+
+Each ISA crate is self-contained with four components:
 1. `grammars/rv32i.pest` - Assembly syntax (PEST grammar)
 2. `instructions/rv32i.toml` - Instruction encoding (data)
-3. `src/isa/rv32i.rs` - Instruction behaviors + parser (code)
+3. `src/lib.rs` - Instruction behaviors + parser (code)
 4. Trait implementation - Ties them all together
+
+**Crate dependencies:**
+```
+rmachine-rv32i
+├── depends on: rmachine-core (traits, GenericMachine)
+├── depends on: rmachine-macros (proc macros)
+└── depends on: pest, pest_derive (parsing)
+```
+
+### Workspace Setup
+
+```toml
+# Cargo.toml (workspace root)
+[workspace]
+members = [
+    "crates/rmachine-macros",
+    "crates/rmachine-core",
+    "crates/rmachine-rv32i",
+    "crates/rmachine-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/aleury/rmachine"
+```
 
 ### Macro Crate Setup
 
 ```toml
-# rmachine-macros/Cargo.toml
+# crates/rmachine-macros/Cargo.toml
 [package]
 name = "rmachine-macros"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [lib]
 proc-macro = true
@@ -1652,6 +1733,67 @@ quote = "1.0"
 proc-macro2 = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
+```
+
+### Core Crate Setup
+
+```toml
+# crates/rmachine-core/Cargo.toml
+[package]
+name = "rmachine-core"
+version.workspace = true
+edition.workspace = true
+description = "Core traits and types for rmachine multi-ISA emulator"
+
+[dependencies]
+anyhow = "1.0"
+```
+
+### ISA Crate Example (RV32I)
+
+```toml
+# crates/rmachine-rv32i/Cargo.toml
+[package]
+name = "rmachine-rv32i"
+version.workspace = true
+edition.workspace = true
+description = "RISC-V RV32I instruction set implementation for rmachine"
+
+[dependencies]
+rmachine-core = { path = "../rmachine-core" }
+rmachine-macros = { path = "../rmachine-macros" }
+anyhow = "1.0"
+pest = "2.7"
+pest_derive = "2.7"
+```
+
+### CLI Crate Setup
+
+```toml
+# crates/rmachine-cli/Cargo.toml
+[package]
+name = "rmachine-cli"
+version.workspace = true
+edition.workspace = true
+description = "Command-line tools for rmachine emulator"
+
+[[bin]]
+name = "rasm"
+path = "src/bin/rasm.rs"
+
+[[bin]]
+name = "rmon"
+path = "src/bin/rmon.rs"
+
+[[bin]]
+name = "rdis"
+path = "src/bin/rdis.rs"
+
+[dependencies]
+rmachine-core = { path = "../rmachine-core" }
+rmachine-rv32i = { path = "../rmachine-rv32i" }
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
 ```
 
 ### What the Macro Does
@@ -1820,28 +1962,52 @@ Combines the best of all approaches:
 
 ## Implementation Roadmap
 
-### Phase 1: Core Infrastructure (Week 1)
+### Phase 0: Workspace Setup (Week 1)
 
-**Goal:** Set up the trait and basic types
+**Goal:** Restructure project into Cargo workspace
 
-1. Create `src/instruction_set/mod.rs`
+1. Create workspace root `Cargo.toml`
+   - Define workspace members
+   - Set up workspace-level package metadata
+   - Configure resolver = "2"
+
+2. Create crate directories
+   - `mkdir -p crates/{rmachine-macros,rmachine-core,rmachine-rv32i,rmachine-cli}`
+   - Create `Cargo.toml` for each crate
+
+3. Migrate existing code
+   - Move core types to `rmachine-core` (machine, state)
+   - Move binaries to `rmachine-cli` (rasm, rmon, rdis)
+   - Set up crate dependencies
+
+4. Verify workspace builds
+   - `cargo build --workspace`
+   - `cargo test --workspace`
+   - Fix any import/module issues
+
+### Phase 1: Core Infrastructure (Week 2)
+
+**Goal:** Set up the trait and basic types in `rmachine-core`
+
+1. Create `crates/rmachine-core/src/instruction_set/mod.rs`
    - Define `InstructionSet` trait
-   - Define `InstructionSpec`, `Format`, `OperandPattern`
+   - Define `InstructionSpecTrait`
+   - Define `OperandPattern`, `Format` enums
 
-2. Create `src/machine.rs`
+2. Create `crates/rmachine-core/src/machine.rs`
    - Implement `MachineState`
    - Implement `GenericMachine<I: InstructionSet>`
    - Generic `step()` method
 
-3. Add basic tests
+3. Add basic tests to `rmachine-core`
    - Test `MachineState` register/memory operations
    - Test generic structure compiles
 
-### Phase 2: Proc Macro Foundation (Week 2)
+### Phase 2: Proc Macro Foundation (Week 3)
 
 **Goal:** Create the proc macro crate
 
-1. Set up `rmachine-macros/` crate
+1. Set up `crates/rmachine-macros/` crate
    - Add dependencies (syn, quote, toml, serde)
    - Create basic derive macro skeleton
 
@@ -1859,16 +2025,17 @@ Combines the best of all approaches:
    - Create test ISA with 2-3 instructions
    - Verify generated code compiles
 
-### Phase 3: RV32I Migration (Week 3-4)
+### Phase 3: RV32I Migration (Week 4-5)
 
-**Goal:** Migrate existing RISC-V implementation
+**Goal:** Migrate existing RISC-V implementation to `rmachine-rv32i` crate
 
-1. Create `instructions/rv32i.toml`
+1. Create `crates/rmachine-rv32i/instructions/rv32i.toml`
    - Port current 9 instructions to TOML format
-   - Add encoding metadata
+   - Add encoding metadata (opcode, funct3, funct7, format)
 
-2. Create `src/isa/rv32i.rs`
-   - Define `RV32I` struct with derive macro
+2. Create `crates/rmachine-rv32i/src/lib.rs`
+   - Define `RV32I` struct with `#[derive(InstructionSet)]`
+   - Define `RV32ISpec` with RISC-V specific fields
    - Define `RV32Context` and helper methods
    - Implement `decode_operands()`
    - Implement `create_context()`
@@ -1882,21 +2049,22 @@ Combines the best of all approaches:
    - Validate method existence at compile time
 
 5. Implement PEST-based parsing
-   - Add `pest` and `pest_derive` dependencies to Cargo.toml
-   - Create `grammars/` directory
-   - Write `grammars/rv32i.pest` with RISC-V syntax rules
+   - Add `pest` and `pest_derive` dependencies to `rmachine-rv32i/Cargo.toml`
+   - Create `crates/rmachine-rv32i/grammars/` directory
+   - Write `crates/rmachine-rv32i/grammars/rv32i.pest` with RISC-V syntax rules
    - Add `#[derive(Parser)]` with `#[grammar = "grammars/rv32i.pest"]` to RV32I
    - Implement `parse_assembly()` in RV32I trait implementation
    - Convert PEST pairs to AST using `lookup()` for validation
    - Update all tests to use `RV32I::parse_assembly(source)`
    - Verify all existing tests pass
-   - Delete `src/lexer.rs` and `src/parser.rs` (~700 lines saved!)
+   - Delete old lexer/parser from `rmachine-core` (~700 lines saved!)
 
-6. Update assembler
+6. Update CLI binaries in `rmachine-cli`
+   - Update imports to use `rmachine-core` and `rmachine-rv32i`
    - Use generated lookup functions for encoding
    - Remove old encoding match statements
 
-### Phase 4: Complete RV32I (Week 5-6)
+### Phase 4: Complete RV32I (Week 6-7)
 
 **Goal:** Implement all remaining RV32I instructions
 
@@ -1915,34 +2083,42 @@ Combines the best of all approaches:
    - Test instruction combinations
    - Test edge cases (overflow, alignment, etc.)
 
-### Phase 5: 6502 Validation (Week 7-8)
+### Phase 5: 6502 Validation (Week 8-9)
 
 **Goal:** Prove architecture flexibility and ISA-specific syntax support
 
-1. Create `grammars/mos6502.pest`
+1. Create new `crates/rmachine-mos6502/` crate
+   - Add to workspace members in root `Cargo.toml`
+   - Create `Cargo.toml` with dependencies on `rmachine-core` and `rmachine-macros`
+
+2. Create `crates/rmachine-mos6502/grammars/mos6502.pest`
    - Define 6502 syntax (`;` comments, `$` hex, `#` immediates)
    - Handle addressing modes (indirect indexed, etc.)
    - Uppercase mnemonics
 
-2. Create `instructions/mos6502.toml`
+3. Create `crates/rmachine-mos6502/instructions/mos6502.toml`
    - Define 6502 instruction encodings
-   - Variable-length instruction handling
+   - Variable-length instruction handling (1-3 bytes)
    - Addressing mode specifications
+   - Cycle counts
 
-3. Create `src/isa/mos6502.rs`
+4. Create `crates/rmachine-mos6502/src/lib.rs`
+   - Define `MOS6502` struct with `#[derive(InstructionSet)]`
+   - Define `MOS6502Spec` with 6502-specific fields (addressing_mode, length, cycles)
    - Derive PEST parser: `#[grammar = "grammars/mos6502.pest"]`
    - Implement `parse_assembly()` for 6502 syntax
    - Define `MOS6502Context` (A, X, Y, flags)
    - Implement decode for variable-length instructions
-   - Implement key 6502 instructions
+   - Implement key 6502 instructions (LDA, ADC, STA, etc.)
 
-4. Demonstrate differences
+5. Demonstrate differences
    - Show 8-bit vs 32-bit operations
    - Show flag-heavy architecture
    - **Show completely different syntax working seamlessly**
    - Prove context and syntax flexibility
+   - Add example programs in 6502 assembly
 
-### Phase 6: Documentation & Polish (Week 9-10)
+### Phase 6: Documentation & Polish (Week 10)
 
 **Goal:** Make it usable and teachable
 
@@ -1968,7 +2144,11 @@ Combines the best of all approaches:
 ### Creating and Running a Machine
 
 ```rust
-use rmachine::machine::RV32IMachine;
+use rmachine_core::machine::GenericMachine;
+use rmachine_rv32i::RV32I;
+
+// Type alias for convenience
+type RV32IMachine = GenericMachine<RV32I>;
 
 fn main() -> Result<()> {
     // Create RISC-V machine: 64KB memory, 32 registers
@@ -1992,7 +2172,12 @@ fn main() -> Result<()> {
 ### Switching ISAs
 
 ```rust
-use rmachine::machine::{RV32IMachine, MOS6502Machine};
+use rmachine_core::machine::GenericMachine;
+use rmachine_rv32i::RV32I;
+use rmachine_mos6502::MOS6502;
+
+type RV32IMachine = GenericMachine<RV32I>;
+type MOS6502Machine = GenericMachine<MOS6502>;
 
 fn run_risc_v() {
     let mut machine = RV32IMachine::new(64 * 1024, 32);
@@ -2032,9 +2217,13 @@ fn test_add_instruction() {
 ### ISA-Agnostic Tools
 
 ```rust
+use rmachine_core::instruction_set::InstructionSet;
+use rmachine_rv32i::RV32I;
+use rmachine_mos6502::MOS6502;
+
 fn disassemble<I: InstructionSet>(bytes: &[u8]) -> String {
     if let Some(spec) = I::lookup_encoding(bytes) {
-        format!("{} ({})", spec.mnemonic, I::NAME)
+        format!("{} ({})", spec.mnemonic(), I::NAME)
     } else {
         format!(".byte {:02x?}", bytes)
     }
@@ -2095,16 +2284,17 @@ impl<I: InstructionSet> GenericMachine<I> {
 
 ## Conclusion
 
-This trait-based architecture provides:
+This trait-based architecture with workspace structure provides:
 
 1. **Generic emulation framework** - write instruction set once, get full emulator
 2. **Zero overhead abstraction** - compile-time generics, no runtime cost
 3. **Type safety** - can't mix architectures, compile-time validation
 4. **Natural APIs** - each ISA gets ergonomic, architecture-specific context
 5. **Easy extension** - add instructions with one TOML entry + one method
-6. **Educational value** - demonstrates advanced Rust patterns
+6. **Modular crate structure** - clean separation, parallel compilation, independent ISA development
+7. **Educational value** - demonstrates advanced Rust patterns
 
-The design transforms rmachine from a RISC-V emulator into a universal emulation platform, while maintaining the simplicity and performance of hand-written code.
+The design transforms rmachine from a RISC-V emulator into a universal emulation platform, while maintaining the simplicity and performance of hand-written code. The workspace structure ensures each ISA is self-contained and can be developed, tested, and published independently.
 
 **Key insights:**
 1. **The pattern of emulation is generic** (fetch-decode-execute), but architectural details are specific
@@ -2112,10 +2302,11 @@ The design transforms rmachine from a RISC-V emulator into a universal emulation
 3. **Assembly syntax is inherently ISA-specific** - RISC-V uses `#` comments, 6502 uses `;`, x86 AT&T uses `%` for registers
 4. **Associated types provide the perfect abstraction** - generic code uses `I::Spec` through the trait, ISA-specific code accesses concrete fields
 5. **PEST handles syntax diversity** - declarative grammars let each ISA define natural syntax without code duplication
-6. **Four components per ISA work together**:
+6. **Workspace structure enables modularity** - each ISA is a self-contained crate with its own grammar, specs, and implementation
+7. **Four components per ISA work together**:
    - `.pest` file - Assembly syntax rules (declarative)
    - `.toml` file - Instruction encoding specs (data)
    - `.rs` file - Instruction behaviors (code)
    - `InstructionSet` trait - Semantic validation (interface)
 
-Rust's trait system with associated types + PEST's declarative grammars let us capture both the generic pattern and the specific details elegantly, with massive code reduction (85%!) and zero runtime overhead.
+Rust's trait system with associated types + PEST's declarative grammars + Cargo workspace modularity let us capture both the generic pattern and the specific details elegantly, with massive code reduction (85%!) and zero runtime overhead.
