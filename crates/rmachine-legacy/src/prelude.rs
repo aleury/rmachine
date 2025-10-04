@@ -1,11 +1,11 @@
-//! The rmachine prelude - commonly used types and traits.
+//! The rmachine-legacy prelude - commonly used types and traits.
 //!
 //! This module provides a convenient way to import the most commonly used types
 //! from the rmachine crate. Rather than importing each type individually, you can
 //! use a glob import of the prelude:
 //!
 //! ```
-//! use rmachine::prelude::*;
+//! use rmachine_legacy::prelude::*;
 //! ```
 //!
 //! # Contents

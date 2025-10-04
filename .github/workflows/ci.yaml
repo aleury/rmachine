@@ -24,7 +24,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-llvm-cov cargo-mutants
       - run: cargo llvm-cov --all-features
-      - run: cargo mutants --check
+      - run: cargo mutants --workspace --check
 
   lint:
     runs-on: ubuntu-latest
@@ -46,4 +46,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features
+      - run: cargo test --workspace --all-features

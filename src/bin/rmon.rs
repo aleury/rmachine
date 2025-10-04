@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::Parser;
 use std::io::{Write, stdin, stdout};
 
-use rmachine::{prelude::*, try_image_from_bytes};
+use rmachine_legacy::{prelude::*, try_image_from_bytes};
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]

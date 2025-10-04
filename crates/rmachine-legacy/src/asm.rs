@@ -750,7 +750,6 @@ pub fn assemble(input: &str) -> Result<Image> {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
     use test_case::test_case;
 
     use super::*;
