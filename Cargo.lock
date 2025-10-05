@@ -385,6 +385,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmachine-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "rmachine-legacy"
 version = "0.1.0"
 dependencies = [

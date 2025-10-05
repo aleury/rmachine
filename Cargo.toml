@@ -1,7 +1,8 @@
 [workspace]
 members = [
-    "crates/rmachine-legacy",
+    "crates/rmachine-core",
     "crates/rmachine-cli",
+    "crates/rmachine-legacy",
 ]
 resolver = "3"
 

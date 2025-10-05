@@ -3,6 +3,12 @@ name = "rmachine-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "rasm"
@@ -17,7 +23,7 @@ name = "rdis"
 path = "src/bin/rdis.rs"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0"
 clap = { version = "4.5.27", features = ["derive"] }
 rmachine-legacy = { path = "../rmachine-legacy" }
 
