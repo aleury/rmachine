@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::Parser;
-use rmachine::build_exe;
+use rmachine_legacy::build_exe;
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
