@@ -238,17 +238,26 @@ pub struct RV32Operands {
 impl RV32Context<'_> {
     /// Get value of rs1 register
     pub fn rs1_val(&self) -> u32 {
-        self.state.get_reg(self.rs1 as usize)
+        if self.rs1 == 0 {
+            return 0;  // RISC-V convention: x0 is hardwired to zero
+        }
+        self.state.get_reg(self.rs1 as usize) as u32
     }
 
     /// Get value of rs2 register
     pub fn rs2_val(&self) -> u32 {
-        self.state.get_reg(self.rs2 as usize)
+        if self.rs2 == 0 {
+            return 0;  // RISC-V convention: x0 is hardwired to zero
+        }
+        self.state.get_reg(self.rs2 as usize) as u32
     }
 
     /// Set destination register
     pub fn set_rd(&mut self, value: u32) {
-        self.state.set_reg(self.rd as usize, value)
+        if self.rd == 0 {
+            return;  // RISC-V convention: x0 is read-only
+        }
+        self.state.set_reg(self.rd as usize, value as u64)
     }
 
     /// Get immediate value
@@ -266,18 +275,46 @@ impl RV32Context<'_> {
         self.state.pc += bytes;
     }
 
-    /// Read memory (for loads)
-    pub fn read_memory(&self, addr: u32, width: usize) -> Result<u32> {
-        let value = self.state.read_memory(addr as u64, width)?;
-        Ok(value as u32)
+    /// Read byte from memory
+    pub fn read_u8(&self, addr: u32) -> Result<u8> {
+        self.state.read_u8(addr as u64)
     }
 
-    /// Write memory (for stores)
-    pub fn write_memory(&mut self, addr: u32, value: u32, width: usize) -> Result<()> {
-        self.state.write_memory(addr as u64, value as u64, width)
+    /// Read halfword from memory
+    pub fn read_u16(&self, addr: u32) -> Result<u16> {
+        self.state.read_u16(addr as u64)
+    }
+
+    /// Read word from memory
+    pub fn read_u32(&self, addr: u32) -> Result<u32> {
+        self.state.read_u32(addr as u64)
+    }
+
+    /// Write byte to memory
+    pub fn write_u8(&mut self, addr: u32, value: u8) -> Result<()> {
+        self.state.write_u8(addr as u64, value)
+    }
+
+    /// Write halfword to memory
+    pub fn write_u16(&mut self, addr: u32, value: u16) -> Result<()> {
+        self.state.write_u16(addr as u64, value)
+    }
+
+    /// Write word to memory
+    pub fn write_u32(&mut self, addr: u32, value: u32) -> Result<()> {
+        self.state.write_u32(addr as u64, value)
     }
 }
 ```
+
+**Note on ISA-Specific Conventions:**
+
+The Context layer is where ISA-specific register conventions are enforced:
+- **RISC-V**: x0 always reads as 0 and ignores writes (handled in `rs1_val()`, `rs2_val()`, `set_rd()`)
+- **6502**: All registers are normal (A, X, Y have no special hardwired values)
+- **Other ISAs**: Each implements its own register semantics
+
+State methods (`get_reg`, `set_reg`, `read_u8`, etc.) are deliberately **ISA-agnostic** - they just provide bounds-checked storage access. This keeps State simple and reusable across all architectures. ISA-specific behavior belongs in the Context layer, where it's enforced through the natural API that instruction implementations use.
 
 ### Manual Trait Implementation
 
@@ -412,7 +449,7 @@ impl RV32I {
     /// LW: rd = mem[rs1 + imm]
     pub fn lw(ctx: &mut RV32Context) -> Result<()> {
         let addr = ctx.rs1_val().wrapping_add(ctx.imm() as u32);
-        let value = ctx.read_memory(addr, 4)?;
+        let value = ctx.read_u32(addr)?;
         ctx.set_rd(value);
         ctx.advance_pc(4);
         Ok(())
@@ -421,7 +458,7 @@ impl RV32I {
     /// SW: mem[rs1 + imm] = rs2
     pub fn sw(ctx: &mut RV32Context) -> Result<()> {
         let addr = ctx.rs1_val().wrapping_add(ctx.imm() as u32);
-        ctx.write_memory(addr, ctx.rs2_val(), 4)?;
+        ctx.write_u32(addr, ctx.rs2_val())?;
         ctx.advance_pc(4);
         Ok(())
     }
@@ -782,79 +819,50 @@ pub struct MachineState {
     /// Memory (byte-addressable)
     memory: Vec<u8>,
 
-    /// Architecture-specific special registers (A, X, Y, etc.)
-    special_regs: HashMap<String, u64>,
-
     /// Status flags (if architecture has them)
     flags: Option<u64>,
 }
 
 impl MachineState {
-    pub fn new(mem_size: usize, num_regs: usize) -> Self {
-        Self {
-            regs: vec![0; num_regs],
-            pc: 0,
-            memory: vec![0; mem_size],
-            special_regs: HashMap::new(),
-            flags: Some(0),
-        }
-    }
+    /// Create new state with given memory size and register count
+    pub fn new(mem_size: usize, num_regs: usize) -> Self { /* ... */ }
 
-    pub fn get_reg(&self, index: usize) -> u64 {
-        if index == 0 { return 0; }  // x0 hardwired to zero
-        self.regs.get(index).copied().unwrap_or(0)
-    }
+    /// Get register value with bounds checking
+    pub fn get_reg(&self, index: usize) -> u64 { /* ... */ }
 
-    pub fn set_reg(&mut self, index: usize, value: u64) {
-        if index == 0 { return; }  // x0 is read-only
-        if let Some(reg) = self.regs.get_mut(index) {
-            *reg = value;
-        }
-    }
+    /// Set register value with bounds checking
+    pub fn set_reg(&mut self, index: usize, value: u64) { /* ... */ }
 
-    pub fn get_special_reg(&self, name: &str) -> u64 {
-        self.special_regs.get(name).copied().unwrap_or(0)
-    }
+    /// Read byte from memory
+    pub fn read_u8(&self, addr: u64) -> Result<u8> { /* ... */ }
 
-    pub fn set_special_reg(&mut self, name: &str, value: u64) {
-        self.special_regs.insert(name.to_string(), value);
-    }
+    /// Read 16-bit value from memory (little-endian)
+    pub fn read_u16(&self, addr: u64) -> Result<u16> { /* ... */ }
 
-    pub fn get_flag(&self, name: &str) -> bool {
-        // Implementation depends on flag definitions
-        // For now, simplified
-        false
-    }
+    /// Read 32-bit value from memory (little-endian)
+    pub fn read_u32(&self, addr: u64) -> Result<u32> { /* ... */ }
 
-    pub fn set_flag(&mut self, name: &str, value: bool) {
-        // Implementation depends on flag definitions
-    }
+    /// Read 64-bit value from memory (little-endian)
+    pub fn read_u64(&self, addr: u64) -> Result<u64> { /* ... */ }
 
-    pub fn read_memory(&self, addr: u64, width: usize) -> Result<u64> {
-        let addr = addr as usize;
-        if addr + width > self.memory.len() {
-            bail!("memory access out of bounds: {:#x}", addr);
-        }
+    /// Write byte to memory
+    pub fn write_u8(&mut self, addr: u64, value: u8) -> Result<()> { /* ... */ }
 
-        let mut value = 0u64;
-        for i in 0..width {
-            value |= (self.memory[addr + i] as u64) << (i * 8);
-        }
-        Ok(value)
-    }
+    /// Write 16-bit value to memory (little-endian)
+    pub fn write_u16(&mut self, addr: u64, value: u16) -> Result<()> { /* ... */ }
 
-    pub fn write_memory(&mut self, addr: u64, value: u64, width: usize) -> Result<()> {
-        let addr = addr as usize;
-        if addr + width > self.memory.len() {
-            bail!("memory write out of bounds: {:#x}", addr);
-        }
+    /// Write 32-bit value to memory (little-endian)
+    pub fn write_u32(&mut self, addr: u64, value: u32) -> Result<()> { /* ... */ }
 
-        for i in 0..width {
-            self.memory[addr + i] = ((value >> (i * 8)) & 0xFF) as u8;
-        }
-        Ok(())
-    }
+    /// Write 64-bit value to memory (little-endian)
+    pub fn write_u64(&mut self, addr: u64, value: u64) -> Result<()> { /* ... */ }
 }
+
+// All memory methods:
+// - Use bounds checking (return `Result` on out-of-bounds access)
+// - Use little-endian byte order
+// - Return/accept the actual type being read/written (type-safe)
+// - Implementation details are in the actual code
 
 impl<I: InstructionSet> GenericMachine<I> {
     pub fn new(mem_size: usize, num_regs: usize) -> Self {
