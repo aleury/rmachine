@@ -3,7 +3,10 @@ use std::marker::PhantomData;
 
 use anyhow::Result;
 
-use crate::{isa::Cpu, isa::InstructionSet, memory::Memory};
+use crate::{
+    isa::{Cpu, InstructionSet, StepResult},
+    memory::Memory,
+};
 
 #[derive(Debug, Default)]
 pub struct Machine<ISA: InstructionSet> {
@@ -28,7 +31,7 @@ impl<ISA: InstructionSet> Machine<ISA> {
     /// # Errors
     ///
     /// Returns an error if the instruction is illegal or if there is an error executing the instruction.
-    pub fn step(&mut self) -> Result<()> {
+    pub fn step(&mut self) -> Result<StepResult> {
         self.cpu.step(&mut self.memory)
     }
 }
@@ -48,7 +51,7 @@ mod tests {
 
     struct TestSpec {
         opcode: u8,
-        execute_fn: fn(&mut TestContext) -> Result<()>,
+        execute_fn: fn(&mut TestContext) -> Result<StepResult>,
     }
 
     struct TestContext<'a> {
@@ -66,7 +69,7 @@ mod tests {
     impl Cpu for TestCpu {
         type ISA = TestISA;
 
-        fn step(&mut self, memory: &mut Memory) -> Result<()> {
+        fn step(&mut self, memory: &mut Memory) -> Result<StepResult> {
             let pc = self.pc as usize;
             let opcode = memory.read_u8(pc)?;
 
@@ -88,9 +91,9 @@ mod tests {
 
     impl TestISA {
         #[allow(clippy::unnecessary_wraps)]
-        pub fn halt(ctx: &mut TestContext) -> Result<()> {
+        pub fn halt(ctx: &mut TestContext) -> Result<StepResult> {
             ctx.cpu.pc += 1;
-            Ok(())
+            Ok(StepResult::Halt)
         }
     }
 
