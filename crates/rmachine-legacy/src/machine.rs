@@ -7,21 +7,25 @@ use std::{
     io::{Stdout, Write, stdout},
 };
 
+/// Machine memory.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Memory {
     inner: HashMap<Address, Word>,
 }
 
 impl Memory {
+    /// Get the value at the given address.
     pub fn get(&self, addr: Address) -> Word {
         *self.inner.get(&addr).unwrap_or(&Word::default())
     }
 
-    fn set(&mut self, addr: Address, word: Word) {
+    /// Set the value at the given address.
+    pub fn set(&mut self, addr: Address, word: Word) {
         self.inner.insert(addr, word);
     }
 
-    fn read(&self, addr: Address, len: usize) -> Vec<Word> {
+    /// Read data from memory.
+    pub fn read(&self, addr: Address, len: usize) -> Vec<Word> {
         let mut data = Vec::new();
         for offset in 0..len {
             data.push(self.get(addr + (offset * 4) as Word));
@@ -38,17 +42,20 @@ impl<const N: usize> From<[(Address, Word); N]> for Memory {
     }
 }
 
+/// Register storage.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Registers {
     inner: HashMap<Reg, Word>,
 }
 
 impl Registers {
+    /// Get the value of a register.
     pub fn get(&self, reg: Reg) -> Word {
         *self.inner.get(&reg).unwrap_or(&Word::default())
     }
 
-    fn set(&mut self, reg: Reg, value: Word) {
+    /// Set the value of a register.
+    pub fn set(&mut self, reg: Reg, value: Word) {
         let value = match reg {
             Reg::zero => 0,
             _ => value,
@@ -65,8 +72,10 @@ impl<const N: usize> From<[(Reg, Word); N]> for Registers {
     }
 }
 
+/// System interface that provides output capabilities.
 pub trait Sys: Write {}
 
+/// System interface that provides output capabilities using stdout.
 pub struct TermSys {
     out: Stdout,
 }
@@ -96,10 +105,14 @@ impl TermSys {
     }
 }
 
+/// Machine is a RISC-V CPU emulator.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Machine {
+    /// Program counter.
     pub pc: Word,
+    /// Memory.
     pub mem: Memory,
+    /// Register file.
     pub regs: Registers,
 }
 
@@ -109,6 +122,7 @@ impl Machine {
     const FD_STDOUT: u32 = 1;
 
     #[must_use]
+    /// Creates a new machine with default values.
     pub fn new() -> Self {
         Self {
             pc: Word::default(),
@@ -117,6 +131,7 @@ impl Machine {
         }
     }
 
+    /// Load an image into the memory.
     pub fn load_image(&mut self, image: &[Word]) {
         for (i, word) in image.iter().enumerate() {
             self.mem.set((i * size_of::<Word>()) as Address, *word);

@@ -9,8 +9,10 @@ use crate::ast::{self, Directive, Line, Operand};
 use crate::lexer;
 use crate::parser::Parser;
 
+/// Word is a 32-bit unsigned integer used to represent data in the RISC-V architecture.
 pub type Word = u32;
 
+/// Address is a 32-bit unsigned integer used to represent memory addresses in the RISC-V architecture.
 pub type Address = u32;
 
 // x0 zero Hard-wired zero —
@@ -33,6 +35,7 @@ pub type Address = u32;
 // f18–27 fs2–11 FP saved registers Callee
 // f28–31 ft8–11 FP temporaries Caller
 
+/// RISC-V Registers
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, PartialOrd)]
 pub enum Reg {
@@ -137,6 +140,7 @@ impl TryFrom<String> for Reg {
     }
 }
 
+/// RISC-V Opcodes
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, PartialOrd)]
 pub enum Opcode {
@@ -202,12 +206,18 @@ impl From<Opcode> for Word {
     }
 }
 
+/// Representation of an assembled RISC-V instruction.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Instruction {
+    /// Opcode of the instruction.
     pub opcode: Opcode,
+    /// Destination register.
     pub rd: Reg,
+    /// Source register 1.
     pub rs1: Reg,
+    /// Source register 2.
     pub rs2: Reg,
+    /// Immediate value.
     pub imm: u32,
 }
 
@@ -684,6 +694,7 @@ fn assemble_instruction(
     Ok(instructions)
 }
 
+/// Executable image of a RISC-V program.
 pub type Image = Vec<Word>;
 
 fn assemble_program(program: ast::Program) -> Result<Image> {

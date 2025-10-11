@@ -11,11 +11,11 @@
 //! # Contents
 //!
 //! The prelude includes:
-//! - Core CPU types: [`Instruction`], [`Opcode`], [`Reg`], [`Word`]
-//! - Machine emulation: [`Machine`], [`TermSys`]
+//! - Core CPU types: [`Instruction`], [`Opcode`], [`Reg`], [`Word`], [`Address`]
+//! - Machine emulation: [`Machine`], [`TermSys`], [`Sys`]
 //!
 //! These types provide everything needed to work with R-Machine assembly code,
 //! emulate CPU execution, and interact with the system.
 
-pub use crate::asm::{Instruction, Opcode, Reg, Word};
-pub use crate::machine::{Machine, TermSys};
+pub use crate::asm::{Address, Instruction, Opcode, Reg, Word};
+pub use crate::machine::{Machine, Sys, TermSys};
