@@ -6,9 +6,29 @@ use crate::asm::{Image, Word, assemble};
 
 /// Builds an executable from `input`.
 ///
+/// # Format
+///
+/// The executable format consists of:
+///
+/// 1. **Magic number** (4 bytes): ASCII string "rme1"
+/// 2. **Image data**: A flat sequence of 32-bit words in big-endian format
+///
+/// Each word from the assembled `Image` is serialized sequentially as 4 bytes.
+/// The image contains both code and data interleaved as a single contiguous
+/// sequence without section headers or delimiters.
+///
+/// # Example
+///
+/// For an image containing the RISC-V instruction `addi a0, zero, 1` (from `li a0, 1`):
+/// ```text
+/// Offset  Bytes           Description
+/// 0x00    72 6D 65 31     Magic: "rme1"
+/// 0x04    00 10 05 13     Word: 0x00100513 (addi a0, zero, 1)
+/// ```
+///
 /// # Errors
 ///
-/// Returns any errors reading the input, assembling the program
+/// Returns any errors reading the input, assembling the program,
 /// or writing the executable to disk.
 pub fn build_exe(input: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<()> {
     const HEADER: &[u8] = b"rme1";
@@ -24,9 +44,19 @@ pub fn build_exe(input: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<()
 
 /// Creates a memory image from a byte slice.
 ///
+/// # Format
+///
+/// Expects a byte slice in the executable format:
+///
+/// 1. **Magic number** (4 bytes): ASCII string "rme1"
+/// 2. **Image data**: A flat sequence of 32-bit words in big-endian format
+///
+/// Each 4-byte chunk after the magic number is parsed as a big-endian word
+/// and added to the resulting `Image`.
+///
 /// # Errors
 ///
-/// Returns an error if the magic number is not found.
+/// Returns an error if the magic number `rme1` is not found at the beginning.
 pub fn try_image_from_bytes(bytes: &[u8]) -> Result<Image> {
     let mut offset = 0;
 
@@ -60,7 +90,7 @@ mod tests {
 
         build_exe("testdata/li.s", exe_path.clone()).unwrap();
 
-        // header + text section length + text section + data section length + data section
+        // Magic "rme1" + word 0x00100513 in big-endian
         let want = vec![b'r', b'm', b'e', b'1', 0, 16, 5, 19];
         let got = std::fs::read(exe_path).unwrap();
         assert_eq!(want, got, "wrong bytes");
