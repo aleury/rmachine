@@ -219,7 +219,6 @@ impl Machine {
 mod tests {
     use super::*;
     use crate::asm;
-    use claims::assert_err;
     use tempfile::tempdir;
 
     struct TestSys {
@@ -387,7 +386,7 @@ mod tests {
             machine.mem.set(addr as Address, *c);
         }
         let mut sys = TestSys::new();
-        assert_err!(machine.run(&mut sys));
+        assert!(machine.run(&mut sys).is_err());
 
         assert_eq!(sys.out, b"Hello World!\n");
     }
@@ -399,7 +398,7 @@ mod tests {
         let mut machine = Machine::new();
         machine.load_image(&image);
 
-        assert_err!(machine.run(&mut TestSys::new()));
+        assert!(machine.run(&mut TestSys::new()).is_err());
 
         let want = 1;
         let got = machine.regs.get(Reg::a0);

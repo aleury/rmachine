@@ -750,10 +750,9 @@ pub fn assemble(input: &str) -> Result<Image> {
 
 #[cfg(test)]
 mod tests {
-    use test_case::test_case;
-
     use super::*;
     use pretty_assertions::assert_eq;
+    use test_case::test_case;
 
     #[test_case(
         0b0111_1110_1011_0101_0000_1111_1110_0011,
