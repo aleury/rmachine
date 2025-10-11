@@ -96,6 +96,7 @@ impl Parser {
         Ok(Line::Directive(directive))
     }
 
+    #[allow(clippy::too_many_lines, clippy::match_same_arms)]
     fn instruction(&mut self, name: String) -> Result<Line> {
         let instruction = match name.as_str() {
             "add" => {
@@ -118,6 +119,15 @@ impl Parser {
                 Instruction {
                     name,
                     operands: vec![rd, rs1, Operand::ImmI32(imm)],
+                }
+            }
+            "auipc" => {
+                let rd = self.register()?;
+                self.expect(TokenType::Comma)?;
+                let imm = self.immediate_u32()?;
+                Instruction {
+                    name,
+                    operands: vec![rd, Operand::ImmU32(imm)],
                 }
             }
             "beq" => {
@@ -245,6 +255,7 @@ mod tests {
             li a0, 1 # set a0 to 1
             li a0, -1
             lui a1, 42
+            auipc a1, 42
             la a1, helloworld
             li a2, 13
             li a7, 64
@@ -276,6 +287,10 @@ mod tests {
                 }),
                 Line::Instruction(Instruction {
                     name: "lui".to_string(),
+                    operands: vec![Operand::Register("a1".to_string()), Operand::ImmU32(42)],
+                }),
+                Line::Instruction(Instruction {
+                    name: "auipc".to_string(),
                     operands: vec![Operand::Register("a1".to_string()), Operand::ImmU32(42)],
                 }),
                 Line::Instruction(Instruction {

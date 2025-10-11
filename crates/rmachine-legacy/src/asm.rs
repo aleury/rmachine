@@ -93,11 +93,20 @@ impl From<Word> for Reg {
     fn from(word: Word) -> Self {
         match word {
             0b00000 => Reg::zero,
+            0b00001 => Reg::ra,
+            0b00010 => Reg::sp,
+            0b00011 => Reg::gp,
+            0b00100 => Reg::tp,
             0b00101 => Reg::t0,
             0b00110 => Reg::t1,
+            0b00111 => Reg::t2,
             0b01010 => Reg::a0,
             0b01011 => Reg::a1,
             0b01100 => Reg::a2,
+            0b01101 => Reg::a3,
+            0b01110 => Reg::a4,
+            0b01111 => Reg::a5,
+            0b10000 => Reg::a6,
             0b10001 => Reg::a7,
             _ => panic!("unknown register: {word:#?}"),
         }
@@ -108,11 +117,20 @@ impl From<Reg> for Word {
     fn from(register_id: Reg) -> Self {
         match register_id {
             Reg::zero => 0b00000,
+            Reg::ra => 0b00001,
+            Reg::sp => 0b00010,
+            Reg::gp => 0b00011,
+            Reg::tp => 0b00100,
             Reg::t0 => 0b00101,
             Reg::t1 => 0b00110,
+            Reg::t2 => 0b00111,
             Reg::a0 => 0b01010,
             Reg::a1 => 0b01011,
             Reg::a2 => 0b01100,
+            Reg::a3 => 0b01101,
+            Reg::a4 => 0b01110,
+            Reg::a5 => 0b01111,
+            Reg::a6 => 0b10000,
             Reg::a7 => 0b10001,
             _ => todo!("Implement From<Reg>: {register_id}"),
         }
@@ -125,8 +143,13 @@ impl TryFrom<String> for Reg {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.as_str() {
             "zero" => Ok(Reg::zero),
+            "ra" => Ok(Reg::ra),
+            "sp" => Ok(Reg::sp),
+            "gp" => Ok(Reg::gp),
+            "tp" => Ok(Reg::tp),
             "t0" => Ok(Reg::t0),
             "t1" => Ok(Reg::t1),
+            "t2" => Ok(Reg::t2),
             "a0" => Ok(Reg::a0),
             "a1" => Ok(Reg::a1),
             "a2" => Ok(Reg::a2),
@@ -184,6 +207,7 @@ impl From<Word> for Opcode {
             0b110_0011 => Opcode::beq,
             0b111_0011 => Opcode::ecall,
             0b110_1111 => Opcode::jal,
+            0b000_0011 => Opcode::lb,
             0b011_0111 => Opcode::lui,
             _ => Opcode::unimp,
         }
@@ -250,7 +274,7 @@ impl Display for Instruction {
             Opcode::add => write!(f, "{} {}, {}, {}", self.opcode, self.rd, self.rs1, self.rs2),
             Opcode::addi => write!(
                 f,
-                "{} {}, {}, 0x{:02x}",
+                "{:6} {}, {}, 0x{:02x}",
                 self.opcode, self.rd, self.rs1, self.imm
             ),
             Opcode::auipc | Opcode::jal | Opcode::lui => {
@@ -474,6 +498,10 @@ struct Ref {
     relative: bool,
 }
 
+/// Sign extension for 12-bit immediate values
+///
+/// If the value is negative, the upper bits are filled with ones.
+/// Otherwise, they are filled with zeros.
 fn sign_extend_12(value: u32) -> u32 {
     if value & 0x800 != 0 {
         value | 0xFFFFF000
@@ -526,6 +554,23 @@ fn assemble_instruction(
                 rs1: Reg::try_from(rs1.to_string())?,
                 rs2: Reg::zero,
                 imm: imm as u32,
+            }]
+        }
+        "auipc" => {
+            assert_eq!(instr.operands.len(), 2, "expected 2 operands for auipc");
+            let Operand::Register(rd) = &instr.operands[0] else {
+                return Err(anyhow!("expected register"));
+            };
+            let Operand::ImmU32(imm) = instr.operands[1] else {
+                return Err(anyhow!("expected unsigned immediate"));
+            };
+            assert!((0..=0xFFFFF).contains(&imm));
+            vec![Instruction {
+                opcode: Opcode::auipc,
+                rd: Reg::try_from(rd.to_string())?,
+                rs1: Reg::zero,
+                rs2: Reg::zero,
+                imm,
             }]
         }
         "beq" => {
@@ -639,7 +684,7 @@ fn assemble_instruction(
                     rd: Reg::try_from(rd.to_string())?,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
-                    imm: imm as u32 | 0xFFFFF000,
+                    imm: sign_extend_12(imm as u32),
                 }]
             } else {
                 // For larger immediates, use lui + addi.
@@ -765,6 +810,65 @@ mod tests {
     use pretty_assertions::assert_eq;
     use test_case::test_case;
 
+    #[test]
+    fn test_assemble_ignores_comments() {
+        let input = "# This is a comment\nadd a0, a1, a2";
+        let want = vec![instr_add(Reg::a0, Reg::a1, Reg::a2)];
+        let got = assemble(input)
+            .unwrap()
+            .into_iter()
+            .map(Instruction::from)
+            .collect::<Vec<_>>();
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn test_assemble_returns_image_of_assembled_instructions() {
+        let input = include_str!("../testdata/full.s");
+        let want = vec![
+            instr_add(Reg::a0, Reg::a1, Reg::a2),
+            instr_add(Reg::a3, Reg::a4, Reg::a5),
+            instr_add(Reg::a6, Reg::a7, Reg::a0),
+            instr_addi(Reg::zero, Reg::zero, 0),
+            instr_addi(Reg::ra, Reg::zero, 16),
+            instr_addi(Reg::sp, Reg::zero, 4),
+            instr_addi(Reg::gp, Reg::zero, 4),
+            instr_addi(Reg::tp, Reg::zero, 8),
+            instr_addi(Reg::a0, Reg::zero, 0),
+            instr_addi(Reg::a1, Reg::zero, 1),
+            instr_addi(Reg::a2, Reg::zero, 2),
+            instr_addi(Reg::a3, Reg::zero, 3),
+            instr_addi(Reg::a4, Reg::zero, 4),
+            instr_addi(Reg::a5, Reg::zero, 5),
+            instr_addi(Reg::a6, Reg::zero, 6),
+            instr_addi(Reg::a7, Reg::zero, 7),
+            instr_auipc(Reg::a0, 42),
+            instr_auipc(Reg::a1, 42),
+            instr_auipc(Reg::a2, 42),
+            instr_auipc(Reg::a3, 42),
+            instr_auipc(Reg::a4, 42),
+            instr_auipc(Reg::a5, 42),
+            instr_auipc(Reg::a6, 42),
+            instr_auipc(Reg::a7, 42),
+            instr_beq(Reg::t0, Reg::zero, 24),
+            instr_beq(Reg::t1, Reg::zero, 20),
+            instr_ecall(),
+            instr_jal(12),
+            instr_lb(Reg::a0, Reg::a1, 4),
+            instr_lui(Reg::t2, 42),
+            instr_addi(Reg::zero, Reg::zero, 0),
+        ];
+        let image = assemble(input).unwrap();
+
+        // Assert that assembled instructions match the expected instructions
+        let got: Vec<Instruction> = image.iter().map(|&word| Instruction::from(word)).collect();
+        assert_eq!(want, got, "program:\n{input}");
+
+        // Assert that the assembled image matches the expected image
+        let expected_image: Vec<Word> = want.into_iter().map(Word::from).collect();
+        assert_eq!(expected_image, image, "program:\n{input}");
+    }
+
     #[test_case(
         0b0111_1110_1011_0101_0000_1111_1110_0011,
         Instruction {
@@ -831,6 +935,28 @@ mod tests {
         } ;
         "ecall instruction"
     )]
+    #[test_case(
+        0b0000_0000_0000_0000_0000_0000_0000_0000,
+        Instruction {
+            opcode: Opcode::unimp,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 0,
+        } ;
+        "unimp"
+    )]
+    #[test_case(
+        0b0000_0000_0100_0101_1000_0101_0000_0011,
+        Instruction {
+            opcode: Opcode::lb,
+            rd: Reg::a0,
+            rs1: Reg::a1,
+            rs2: Reg::zero,
+            imm: 4,
+        } ;
+        "lb instruction"
+    )]
     fn decodes_and_encodes_instructions_successfully(word: Word, instruction: Instruction) {
         // Test decoding
         let got = Instruction::from(word);
@@ -863,6 +989,7 @@ mod tests {
         assert_eq!(want, got);
     }
 
+    #[test_case("lb a0, 0(a1)", vec![instr_lb(Reg::a0, Reg::a1, 0)] ; "load byte from offset")]
     #[test_case("li a0, 1", vec![instr_addi(Reg::a0, Reg::zero, 1)] ; "load immediate 1")]
     #[test_case("li a1, 2", vec![instr_addi(Reg::a1, Reg::zero, 2)] ; "load immediate 2")]
     #[test_case("li a2, 42", vec![instr_addi(Reg::a2, Reg::zero, 42)] ; "load immediate 42")]
@@ -899,11 +1026,57 @@ mod tests {
 
         // Assert that assembled instructions match the expected instructions
         let got: Vec<Instruction> = image.iter().map(|&word| Instruction::from(word)).collect();
-        assert_eq!(expected, got, "program: {}", program);
+        assert_eq!(expected, got, "program: {program}");
 
         // Assert that the assembled image matches the expected image
         let expected_image: Vec<Word> = expected.into_iter().map(Word::from).collect();
-        assert_eq!(expected_image, image, "program: {}", program);
+        assert_eq!(expected_image, image, "program: {program}");
+    }
+
+    #[test_case(Opcode::add, "add   ")]
+    #[test_case(Opcode::addi, "addi  ")]
+    #[test_case(Opcode::auipc, "auipc ")]
+    #[test_case(Opcode::beq, "beq   ")]
+    #[test_case(Opcode::ecall, "ecall ")]
+    #[test_case(Opcode::jal, "jal   ")]
+    #[test_case(Opcode::lb, "lb    ")]
+    #[test_case(Opcode::lui, "lui   ")]
+    #[test_case(Opcode::unimp, "unimp ")]
+    fn test_formatting_opcode(opcode: Opcode, expected: &str) {
+        assert_eq!(format!("{opcode}"), expected);
+    }
+
+    #[test_case(Reg::zero, "zero")]
+    #[test_case(Reg::ra, "ra")]
+    #[test_case(Reg::sp, "sp")]
+    #[test_case(Reg::gp, "gp")]
+    #[test_case(Reg::tp, "tp")]
+    #[test_case(Reg::t0, "t0")]
+    #[test_case(Reg::t1, "t1")]
+    #[test_case(Reg::t2, "t2")]
+    #[test_case(Reg::s0, "s0")]
+    #[test_case(Reg::s1, "s1")]
+    #[test_case(Reg::a0, "a0")]
+    #[test_case(Reg::a1, "a1")]
+    #[test_case(Reg::a2, "a2")]
+    #[test_case(Reg::a3, "a3")]
+    #[test_case(Reg::a4, "a4")]
+    #[test_case(Reg::a5, "a5")]
+    #[test_case(Reg::a6, "a6")]
+    #[test_case(Reg::a7, "a7")]
+    fn test_formatting_register(reg: Reg, expected: &str) {
+        assert_eq!(format!("{reg}"), expected);
+    }
+
+    #[test_case(instr_add(Reg::a0, Reg::a1, Reg::a2), "add    a0, a1, a2")]
+    #[test_case(instr_addi(Reg::a0, Reg::zero, 42), "addi   a0, zero, 0x2a")]
+    #[test_case(instr_auipc(Reg::a0, 42), "auipc  a0, 0x2a")]
+    #[test_case(instr_beq(Reg::t0, Reg::zero, 42), "beq    t0, zero, 0x2a")]
+    #[test_case(instr_lb(Reg::t0, Reg::t0, 42), "lb     t0, 0x2a(t0)")]
+    #[test_case(instr_ecall(), "ecall ")]
+    #[test_case(instr_unimp(), "unimp ")]
+    fn test_formatting_instruction(instruction: Instruction, expected: &str) {
+        assert_eq!(format!("{instruction}"), expected);
     }
 
     fn parse(input: &str) -> ast::Program {
@@ -916,6 +1089,36 @@ mod tests {
     fn instr_addi(rd: Reg, rs1: Reg, imm: u32) -> Instruction {
         Instruction {
             opcode: Opcode::addi,
+            rd,
+            rs1,
+            rs2: Reg::zero,
+            imm,
+        }
+    }
+
+    fn instr_auipc(rd: Reg, imm: u32) -> Instruction {
+        Instruction {
+            opcode: Opcode::auipc,
+            rd,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm,
+        }
+    }
+
+    fn instr_beq(rs1: Reg, rs2: Reg, imm: u32) -> Instruction {
+        Instruction {
+            opcode: Opcode::beq,
+            rd: Reg::zero,
+            rs1,
+            rs2,
+            imm,
+        }
+    }
+
+    fn instr_lb(rd: Reg, rs1: Reg, imm: u32) -> Instruction {
+        Instruction {
+            opcode: Opcode::lb,
             rd,
             rs1,
             rs2: Reg::zero,
@@ -946,6 +1149,26 @@ mod tests {
     fn instr_ecall() -> Instruction {
         Instruction {
             opcode: Opcode::ecall,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm: 0,
+        }
+    }
+
+    fn instr_jal(imm: u32) -> Instruction {
+        Instruction {
+            opcode: Opcode::jal,
+            rd: Reg::zero,
+            rs1: Reg::zero,
+            rs2: Reg::zero,
+            imm,
+        }
+    }
+
+    fn instr_unimp() -> Instruction {
+        Instruction {
+            opcode: Opcode::unimp,
             rd: Reg::zero,
             rs1: Reg::zero,
             rs2: Reg::zero,
