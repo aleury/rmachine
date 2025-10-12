@@ -29,5 +29,7 @@ _start:
     j end
     lb a0, 4(a1)
     lui t2, 42
+    li a0, 1
+    li a0, -1
 end:
     addi zero, zero, 0

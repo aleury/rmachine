@@ -308,7 +308,30 @@ mod tests {
     }
 
     #[test]
-    fn executes_addi_instruction_successfully() {
+    fn add_sets_destination_register_to_sum_of_source_registers() {
+        let mut machine = Machine::new();
+
+        let instruction = Instruction {
+            opcode: Opcode::add,
+            rd: Reg::a0,
+            rs1: Reg::a1,
+            rs2: Reg::a2,
+            imm: 0,
+        };
+        machine.mem.set(0, instruction.into());
+
+        machine.regs.set(Reg::a1, 1);
+        machine.regs.set(Reg::a2, 2);
+
+        machine.run(&mut TestSys::new());
+
+        let want = 3;
+        let got = machine.regs.get(Reg::a0);
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn addi_sets_destination_register_to_sum_of_source_register_and_immediate() {
         let mut machine = Machine::new();
 
         let instruction = Instruction {
@@ -328,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn executes_ecall_instruction_successfully() {
+    fn ecall_executes_syscall_to_write_to_stdout() {
         // .globl _start
         // .section .text
         // _start:
@@ -407,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn add_immediate_1() {
+    fn li_sets_register_to_value() {
         let image = asm::assemble("li a0, 1").unwrap();
 
         let mut machine = Machine::new();
@@ -421,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn test_beq_moves_pc_to_target_if_condition_is_true() {
+    fn beq_moves_pc_to_target_if_condition_is_true() {
         let program = "
         _start:
             li a0, 0
@@ -443,6 +466,21 @@ mod tests {
     }
 
     #[test]
+    fn lb_loads_byte_from_memory_into_register() {
+        let mut machine = Machine::new();
+        machine.mem.set(100, 0x42);
+
+        let image = asm::assemble("lb a0, 100(zero)").unwrap();
+        machine.load_image(&image);
+
+        machine.run(&mut TestSys::new());
+
+        let want = 0x42;
+        let got = machine.regs.get(Reg::a0);
+        assert_eq!(want, got, "wrong a1");
+    }
+
+    #[test]
     fn lui_loads_imm_into_upper_20_bits_of_destination_register() {
         let program = "lui a0, 42";
 
@@ -455,5 +493,32 @@ mod tests {
         let want = 42 << 12;
         let got = machine.regs.get(Reg::a0);
         assert_eq!(want, got, "wrong a0");
+    }
+
+    #[test]
+    fn memory_can_be_constructed_from_a_vector_of_address_word_pairs() {
+        let memory = Memory::from([(0, 0x12345678), (4, 0x9abcdef0)]);
+
+        assert_eq!(memory.get(0), 0x12345678);
+        assert_eq!(memory.get(4), 0x9abcdef0);
+    }
+
+    #[test]
+    fn registers_can_be_constructed_from_a_vector_of_register_value_pairs() {
+        let regs = Registers::from([(Reg::a0, 0x12345678), (Reg::a1, 0x9abcdef0)]);
+
+        assert_eq!(regs.get(Reg::a0), 0x12345678);
+        assert_eq!(regs.get(Reg::a1), 0x9abcdef0);
+    }
+
+    #[test]
+    fn register_zero_is_always_set_to_zero() {
+        let mut regs = Registers::default();
+        regs.set(Reg::zero, 0x12345678);
+        assert_eq!(
+            regs.get(Reg::zero),
+            0,
+            "register zero should always be zero"
+        );
     }
 }

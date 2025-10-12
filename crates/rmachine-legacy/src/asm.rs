@@ -850,12 +850,14 @@ mod tests {
             instr_auipc(Reg::a5, 42),
             instr_auipc(Reg::a6, 42),
             instr_auipc(Reg::a7, 42),
-            instr_beq(Reg::t0, Reg::zero, 24),
-            instr_beq(Reg::t1, Reg::zero, 20),
+            instr_beq(Reg::t0, Reg::zero, 32),
+            instr_beq(Reg::t1, Reg::zero, 28),
             instr_ecall(),
-            instr_jal(12),
+            instr_jal(20),
             instr_lb(Reg::a0, Reg::a1, 4),
             instr_lui(Reg::t2, 42),
+            instr_addi(Reg::a0, Reg::zero, 1),
+            instr_addi(Reg::a0, Reg::zero, 0xFFFFFFFF),
             instr_addi(Reg::zero, Reg::zero, 0),
         ];
         let image = assemble(input).unwrap();
@@ -989,17 +991,9 @@ mod tests {
         assert_eq!(want, got);
     }
 
-    #[test_case("lb a0, 0(a1)", vec![instr_lb(Reg::a0, Reg::a1, 0)] ; "load byte from offset")]
-    #[test_case("li a0, 1", vec![instr_addi(Reg::a0, Reg::zero, 1)] ; "load immediate 1")]
-    #[test_case("li a1, 2", vec![instr_addi(Reg::a1, Reg::zero, 2)] ; "load immediate 2")]
-    #[test_case("li a2, 42", vec![instr_addi(Reg::a2, Reg::zero, 42)] ; "load immediate 42")]
-    #[test_case("li a7, 64", vec![instr_addi(Reg::a7, Reg::zero, 64)] ; "load immediate 64")]
-    #[test_case("li t0, 64", vec![instr_addi(Reg::t0, Reg::zero, 64)] ; "load immediate to t0")]
     #[test_case(
         "li a0, -1",
-        vec![
-            instr_addi(Reg::a0, Reg::zero, 0xFFFFFFFF)
-        ] ;
+        vec![instr_addi(Reg::a0, Reg::zero, 0xFFFFFFFF)] ;
         "load negative immediate"
     )]
     #[test_case(
@@ -1018,10 +1012,7 @@ mod tests {
         ] ;
         "load large immediate"
     )]
-    #[test_case("lui a0, 42", vec![instr_lui(Reg::a0, 42)] ; "load upper immediate")]
-    #[test_case("ecall", vec![instr_ecall()] ; "environment call")]
-    #[test_case("add t1, t0, a0", vec![instr_add(Reg::t1, Reg::t0, Reg::a0)] ; "register add")]
-    fn test_assemble(program: &str, expected: Vec<Instruction>) {
+    fn test_li_may_assemble_to_one_or_two_instructions(program: &str, expected: Vec<Instruction>) {
         let image = assemble(program).unwrap();
 
         // Assert that assembled instructions match the expected instructions

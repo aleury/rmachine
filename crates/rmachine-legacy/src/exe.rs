@@ -97,9 +97,16 @@ mod tests {
     }
 
     #[test]
-    fn we_can_turn_bytes_into_image() {
+    fn try_image_from_bytes_fn_returns_ok_for_valid_magic_number() {
         let bytes = vec![b'r', b'm', b'e', b'1', 0, 0, 0, 0];
         let image = try_image_from_bytes(&bytes).unwrap();
         assert_eq!(image, vec![0]);
+    }
+
+    #[test]
+    fn try_image_from_bytes_fn_returns_error_for_invalid_magic_number() {
+        let bytes = vec![b'r', b'm', b'e', b'2', 0, 0, 0, 0];
+        let result = try_image_from_bytes(&bytes);
+        assert!(result.is_err());
     }
 }

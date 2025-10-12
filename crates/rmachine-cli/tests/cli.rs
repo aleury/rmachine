@@ -25,6 +25,30 @@ fn rmon_debug_flag_shows_debug_prompt() {
 }
 
 #[test]
+fn rasm_returns_error_when_multiple_files_are_provided_with_the_output_flag() {
+    let mut cmd = Command::cargo_bin("rasm").unwrap();
+
+    cmd.args(["a.s", "b.s", "--output", "output.rmx"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Cannot use -o flag with multiple input files",
+        ));
+}
+
+#[test]
+fn rasm_returns_error_when_file_with_invalid_extension_is_provided() {
+    let mut cmd = Command::cargo_bin("rasm").unwrap();
+
+    cmd.arg("invalid.ext")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Input file must end with .s extension: invalid.ext",
+        ));
+}
+
+#[test]
 fn rasm_run_builds_object_file_with_no_extension() {
     let temp = Builder::new().suffix(".s").tempfile().unwrap();
     std::fs::write(temp.path(), "li a0, 42").unwrap();
