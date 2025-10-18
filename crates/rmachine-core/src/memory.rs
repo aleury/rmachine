@@ -5,13 +5,27 @@ use anyhow::anyhow;
 pub type Address = usize;
 
 /// Byte-addressable memory.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Memory(pub(crate) Vec<u8>);
 
 impl Memory {
     #[must_use]
     pub fn new(memory_size: usize) -> Self {
         Self(vec![0u8; memory_size])
+    }
+
+    /// Load bytes into memory at the given address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the address is out of bounds.
+    pub fn load(&mut self, addr: Address, bytes: &[u8]) -> Result<()> {
+        let slice = self
+            .0
+            .get_mut(addr..addr + bytes.len())
+            .ok_or_else(|| anyhow!("memory out of bounds: {addr:#x}"))?;
+        slice.copy_from_slice(bytes);
+        Ok(())
     }
 
     /// Read a byte from memory.
@@ -128,6 +142,16 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn load_loads_bytes_at_the_given_address() {
+        let mut memory = Memory::new(6);
+        memory.load(2, &[0x01, 42]).unwrap();
+
+        let want = vec![0, 0, 1, 42, 0, 0];
+        let got = memory.0;
+        assert_eq!(want, got, "bytes should be loaded into memory");
+    }
+
     #[test]
     fn read_u8_fn_reads_byte_from_memory_at_given_address() {
         let memory = Memory(vec![42]);

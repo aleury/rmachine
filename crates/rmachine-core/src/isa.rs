@@ -2,14 +2,6 @@ use anyhow::Result;
 
 use crate::memory::Memory;
 
-/// Result of a CPU step.
-pub enum StepResult {
-    /// Halt the CPU.
-    Halt,
-    /// Continue execution.
-    Continue,
-}
-
 pub trait Cpu: Default {
     /// Instruction set for the CPU.
     type ISA: InstructionSet<Cpu = Self>;
@@ -21,7 +13,10 @@ pub trait Cpu: Default {
     /// # Errors
     ///
     /// Returns an error if the instruction is not supported or if the mnemonic is invalid.
-    fn step(&mut self, memory: &mut Memory) -> Result<StepResult>;
+    fn step(&mut self, memory: &mut Memory) -> Result<()>;
+
+    /// Reset the CPU to its initial state.
+    fn reset(&mut self);
 }
 
 pub trait InstructionSet: Sized {
@@ -31,6 +26,6 @@ pub trait InstructionSet: Sized {
     /// Instruction specification.
     type Spec;
 
-    /// Execution context.
+    /// Execution Context
     type Context<'a>;
 }

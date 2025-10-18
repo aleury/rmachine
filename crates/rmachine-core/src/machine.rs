@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use anyhow::Result;
 
 use crate::{
-    isa::{Cpu, InstructionSet, StepResult},
+    isa::{Cpu, InstructionSet},
     memory::Memory,
 };
 
@@ -31,107 +31,73 @@ impl<ISA: InstructionSet> Machine<ISA> {
     /// # Errors
     ///
     /// Returns an error if the instruction is illegal or if there is an error executing the instruction.
-    pub fn step(&mut self) -> Result<StepResult> {
+    pub fn step(&mut self) -> Result<()> {
         self.cpu.step(&mut self.memory)
+    }
+
+    /// Run the machine until an error occurs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an instruction fails (illegal opcode, memory fault, etc.)
+    pub fn run(&mut self) -> Result<()> {
+        loop {
+            self.step()?;
+        }
+    }
+
+    /// Load a program into memory at the given address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is an error writing to memory.
+    pub fn load(&mut self, addr: usize, program: &[u8]) -> Result<()> {
+        self.memory.load(addr, program)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::tiny::TinyISA;
+
     use super::*;
-    use anyhow::anyhow;
-
-    struct TestISA;
-
-    #[derive(Debug, Default)]
-    struct TestCpu {
-        reg: u8,
-        pc: u16,
-    }
-
-    struct TestSpec {
-        opcode: u8,
-        execute_fn: fn(&mut TestContext) -> Result<StepResult>,
-    }
-
-    struct TestContext<'a> {
-        cpu: &'a mut TestCpu,
-    }
-
-    impl InstructionSet for TestISA {
-        type Cpu = TestCpu;
-
-        type Spec = TestSpec;
-
-        type Context<'a> = TestContext<'a>;
-    }
-
-    impl Cpu for TestCpu {
-        type ISA = TestISA;
-
-        fn step(&mut self, memory: &mut Memory) -> Result<StepResult> {
-            let pc = self.pc as usize;
-            let opcode = memory.read_u8(pc)?;
-
-            let spec = TEST_INSTRUCTIONS
-                .iter()
-                .find(|s| s.opcode == opcode)
-                .ok_or_else(|| anyhow!("illegal instruction at pc={pc:#x}"))?;
-
-            let mut ctx = TestContext { cpu: self };
-
-            (spec.execute_fn)(&mut ctx)
-        }
-    }
-
-    const TEST_INSTRUCTIONS: &[TestSpec] = &[TestSpec {
-        opcode: 0x00,
-        execute_fn: TestISA::halt,
-    }];
-
-    impl TestISA {
-        #[allow(clippy::unnecessary_wraps)]
-        pub fn halt(ctx: &mut TestContext) -> Result<StepResult> {
-            ctx.cpu.pc += 1;
-            Ok(StepResult::Halt)
-        }
-    }
 
     #[test]
     fn machine_new_returns_initialized_machine() {
-        let machine = Machine::<TestISA>::new(1024);
+        let machine = Machine::<TinyISA>::new(1024);
 
-        let want_reg = 0u8;
-        let got_reg = machine.cpu.reg;
-        assert_eq!(want_reg, got_reg, "Register should be initialized to zero");
-
-        let want_pc = 0;
-        let got_pc = machine.cpu.pc;
-        assert_eq!(
-            want_pc, got_pc,
-            "Program counter should be initialized to zero"
-        );
-
-        let want_memory = vec![0; 1024];
-        let got_memory = machine.memory.0.clone();
-        assert_eq!(
-            want_memory, got_memory,
-            "Memory should be initialized to zero"
-        );
+        assert_eq!(machine.cpu.a, 0);
+        assert_eq!(machine.cpu.pc, 0);
+        assert_eq!(machine.memory, Memory(vec![0; 1024]));
     }
 
     #[test]
-    fn machine_step_executes_one_instruction() {
-        let mut machine = Machine::<TestISA>::new(1024);
-        machine.memory.0[0] = 0x00; // "halt" instruction
+    fn load_loads_bytes_into_memory_at_the_given_address() {
+        let mut machine = Machine::<TinyISA>::new(4);
+        machine.load(0, &[0x01, 42]).unwrap();
+
+        assert_eq!(machine.memory, Memory(vec![0x01, 42, 0, 0]));
+    }
+
+    #[test]
+    fn step_increments_pc_register_after_executing_nop_instruction() {
+        let mut machine = Machine::<TinyISA>::new(2);
+        machine.load(0, &[0x00]).unwrap();
 
         machine.step().unwrap();
 
-        let want_pc = 1;
-        let got_pc = machine.cpu.pc;
-        assert_eq!(
-            want_pc, got_pc,
-            "Program counter should be incremented after executing a `halt` instruction"
-        );
+        assert_eq!(machine.cpu.pc, 1);
+    }
+
+    #[test]
+    fn run_executes_instructions_until_an_error_occurs() {
+        let mut machine = Machine::<TinyISA>::new(256);
+        machine.load(0, &[0x01, 42, 0xFF]).unwrap(); // lda immediate
+
+        let result = machine.run();
+
+        assert!(result.is_err());
+        assert_eq!(machine.cpu.a, 42);
+        assert_eq!(machine.cpu.pc, 3);
     }
 }
