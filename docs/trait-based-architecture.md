@@ -1803,8 +1803,8 @@ isa! {
     ],
 
     instructions: [
-        { mnemonic: "lda", opcode: 0xA9, format: Immediate, execute: MOS6502::lda },
-        { mnemonic: "ldx", opcode: 0xA2, format: Immediate, execute: MOS6502::ldx },
+        { mnemonic: "lda", opcode: 0xA9, operation: load_imm, format: Immediate, register: a },
+        { mnemonic: "ldx", opcode: 0xA2, operation: load_imm, format: Immediate, register: x },
     ]
 }
 
