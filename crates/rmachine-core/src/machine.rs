@@ -1,15 +1,23 @@
 #![allow(clippy::cast_possible_truncation)]
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::fmt::Write;
 
 use anyhow::Result;
 use anyhow::anyhow;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Register(&'static str);
+pub struct Register(pub &'static str);
 
 impl From<&'static str> for Register {
     fn from(value: &'static str) -> Self {
         Self(value)
+    }
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -20,6 +28,13 @@ pub enum Operation {
     IncrementRegister,
 }
 
+impl Operation {
+    #[must_use]
+    pub fn takes_arg(&self) -> bool {
+        matches!(self, Operation::LoadImm)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Instruction {
     pub mnemonic: String,
@@ -28,11 +43,11 @@ pub struct Instruction {
     pub register: Register,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Machine {
     memory: Vec<u8>,
     pc: u16,
-    registers: HashMap<Register, u8>,
+    pub registers: HashMap<Register, u8>,
     instructions: HashMap<u8, Instruction>,
 }
 
@@ -80,6 +95,12 @@ impl MachineBuilder {
 }
 
 impl Machine {
+    pub fn run(&mut self) {
+        loop {
+            self.step();
+        }
+    }
+
     /// # Panics
     ///
     /// May panic for unimplemented opcode.
@@ -134,6 +155,40 @@ impl Machine {
             .get_mut(addr..addr + program.len())
             .ok_or_else(|| anyhow!("memory out of bounds: {addr:#x}"))?;
         slice.copy_from_slice(program);
+        Ok(())
+    }
+
+    /// Disassemble the next instruction.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the instruction is unknown.
+    #[must_use]
+    pub fn disassemble_next(&self) -> String {
+        let opcode = self.memory.get(self.pc as usize).unwrap();
+        let instruction = self.instructions.get(opcode).unwrap();
+        let mut disassembly = instruction.mnemonic.clone();
+        if instruction.operation.takes_arg() {
+            let value = self.memory.get(self.pc as usize + 1).unwrap();
+            write!(disassembly, " {value:04x}").unwrap();
+        }
+        disassembly
+    }
+}
+
+impl Display for Machine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pc   ")?;
+        for reg in self.registers.keys() {
+            write!(f, "{reg:4} ")?;
+        }
+        writeln!(f)?;
+        write!(f, "{:04x} ", self.pc)?;
+        for value in self.registers.values() {
+            write!(f, "{value:04x} ")?;
+        }
+        write!(f, ": {}", self.disassemble_next())?;
+        writeln!(f)?;
         Ok(())
     }
 }
@@ -214,29 +269,6 @@ mod tests {
             .build()
     }
 
-    fn new_6502_machine() -> Machine {
-        let registers = vec!["a", "x", "y", "f"];
-        let instructions = vec![
-            Instruction {
-                mnemonic: "lda".to_string(),
-                opcode: 0xA9,
-                operation: Operation::LoadImm,
-                register: Register("a"),
-            },
-            Instruction {
-                mnemonic: "inx".to_string(),
-                opcode: 0xE8,
-                operation: Operation::IncrementRegister,
-                register: Register("x"),
-            },
-        ];
-        MachineBuilder::default()
-            .with_memory(1024)
-            .with_registers(registers)
-            .with_instructions(instructions)
-            .build()
-    }
-
     #[test]
     fn machine_new_returns_initialized_machine() {
         let mut machine = new_tiny_machine();
@@ -246,32 +278,6 @@ mod tests {
         machine.step();
 
         assert_eq!(machine.pc, 1);
-    }
-
-    #[test]
-    fn machine_6502_increments_register_x() {
-        let mut machine = new_6502_machine();
-
-        machine.load(0, &[0xE8]).unwrap();
-
-        machine.step();
-
-        let want = 1;
-        let got = machine.registers.get(&"x".into()).copied().unwrap();
-        assert_eq!(want, got);
-    }
-
-    #[test]
-    fn machine_6502_loads_immediate_into_register_a() {
-        let mut machine = new_6502_machine();
-
-        machine.load(0, &[0xA9, 0xFF]).unwrap();
-
-        machine.step();
-
-        let want = 0xFF;
-        let got = machine.registers.get(&"a".into()).copied().unwrap();
-        assert_eq!(want, got);
     }
 
     // #[test]

@@ -3,6 +3,7 @@ members = [
     "crates/rmachine-core",
     "crates/rmachine-cli",
     "crates/rmachine-legacy",
+    "crates/rmachine-6502",
 ]
 resolver = "3"
 
