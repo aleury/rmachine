@@ -531,9 +531,9 @@ fn assemble_instruction(
             };
             vec![Instruction {
                 opcode: Opcode::add,
-                rd: Reg::try_from(rd.to_string())?,
-                rs1: Reg::try_from(rs1.to_string())?,
-                rs2: Reg::try_from(rs2.to_string())?,
+                rd: Reg::try_from(rd.clone())?,
+                rs1: Reg::try_from(rs1.clone())?,
+                rs2: Reg::try_from(rs2.clone())?,
                 imm: 0,
             }]
         }
@@ -550,8 +550,8 @@ fn assemble_instruction(
             };
             vec![Instruction {
                 opcode: Opcode::addi,
-                rd: Reg::try_from(rd.to_string())?,
-                rs1: Reg::try_from(rs1.to_string())?,
+                rd: Reg::try_from(rd.clone())?,
+                rs1: Reg::try_from(rs1.clone())?,
                 rs2: Reg::zero,
                 imm: imm as u32,
             }]
@@ -567,7 +567,7 @@ fn assemble_instruction(
             assert!((0..=0xFFFFF).contains(&imm));
             vec![Instruction {
                 opcode: Opcode::auipc,
-                rd: Reg::try_from(rd.to_string())?,
+                rd: Reg::try_from(rd.clone())?,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm,
@@ -585,15 +585,15 @@ fn assemble_instruction(
                 return Err(anyhow!("expected symbol"));
             };
             refs.push(Ref {
-                name: symbol.to_string(),
+                name: symbol.clone(),
                 address,
                 relative: true,
             });
             vec![Instruction {
                 opcode: Opcode::beq,
                 rd: Reg::zero,
-                rs1: Reg::try_from(rs1.to_string())?,
-                rs2: Reg::try_from(rs2.to_string())?,
+                rs1: Reg::try_from(rs1.clone())?,
+                rs2: Reg::try_from(rs2.clone())?,
                 imm: 0,
             }]
         }
@@ -613,7 +613,7 @@ fn assemble_instruction(
                 return Err(anyhow!("expected symbol"));
             };
             refs.push(Ref {
-                name: symbol.to_string(),
+                name: symbol.clone(),
                 address,
                 relative: true,
             });
@@ -641,13 +641,13 @@ fn assemble_instruction(
                 return Err(anyhow!("expected symbol"));
             };
             refs.push(Ref {
-                name: symbol.to_string(),
+                name: symbol.clone(),
                 address,
                 relative: false,
             });
             vec![Instruction {
                 opcode: Opcode::addi,
-                rd: Reg::try_from(rd.to_string())?,
+                rd: Reg::try_from(rd.clone())?,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm: 0,
@@ -663,8 +663,8 @@ fn assemble_instruction(
             };
             vec![Instruction {
                 opcode: Opcode::lb,
-                rd: Reg::try_from(rd.to_string())?,
-                rs1: Reg::try_from(register.to_string())?,
+                rd: Reg::try_from(rd.clone())?,
+                rs1: Reg::try_from(register.clone())?,
                 rs2: Reg::zero,
                 imm: imm as u32,
             }]
@@ -681,7 +681,7 @@ fn assemble_instruction(
             if (-2048..=2047).contains(&imm) {
                 vec![Instruction {
                     opcode: Opcode::addi,
-                    rd: Reg::try_from(rd.to_string())?,
+                    rd: Reg::try_from(rd.clone())?,
                     rs1: Reg::zero,
                     rs2: Reg::zero,
                     imm: sign_extend_12(imm as u32),
@@ -691,7 +691,7 @@ fn assemble_instruction(
                 let imm = imm as u32;
                 let lower_12 = imm & 0xFFF;
                 let upper_20 = imm >> 12;
-                let rd = Reg::try_from(rd.to_string())?;
+                let rd = Reg::try_from(rd.clone())?;
 
                 let (upper, lower) = if lower_12 & 0x800 != 0 {
                     (upper_20.wrapping_add(1) & 0xFFFFF, lower_12 | 0xFFFFF000)
@@ -727,7 +727,7 @@ fn assemble_instruction(
             };
             vec![Instruction {
                 opcode: Opcode::lui,
-                rd: Reg::try_from(rd.to_string())?,
+                rd: Reg::try_from(rd.clone())?,
                 rs1: Reg::zero,
                 rs2: Reg::zero,
                 imm,
