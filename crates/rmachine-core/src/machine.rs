@@ -95,19 +95,26 @@ impl MachineBuilder {
 }
 
 impl Machine {
-    pub fn run(&mut self) {
+    /// # Errors
+    ///
+    /// May return an error if the execution fails.
+    pub fn run(&mut self) -> Result<()> {
         loop {
-            self.step();
+            self.step()?;
         }
     }
 
-    /// # Panics
+    /// # Errors
     ///
-    /// May panic for unimplemented opcode.
-    pub fn step(&mut self) {
-        let opcode = self.next();
+    /// May return an error if the execution fails.
+    pub fn step(&mut self) -> Result<()> {
+        let opcode = self.next()?;
 
-        let instruction = self.instructions.get(&opcode).cloned().unwrap();
+        let instruction = self
+            .instructions
+            .get(&opcode)
+            .cloned()
+            .ok_or_else(|| anyhow!("opcode not found: {opcode}"))?;
 
         #[expect(unreachable_patterns, reason = "we're not done yet")]
         match instruction {
@@ -120,7 +127,7 @@ impl Machine {
                 register,
                 ..
             } => {
-                let imm = self.next();
+                let imm = self.next()?;
                 self.registers
                     .entry(register.clone())
                     .and_modify(|value| *value = imm);
@@ -136,12 +143,22 @@ impl Machine {
             }
             instruction => unimplemented!("unknown instruction: {instruction:#?}"),
         }
+
+        Ok(())
     }
 
-    fn next(&mut self) -> u8 {
-        let value = *self.memory.get(self.pc as usize).unwrap();
+    /// Fetch the next byte from memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the address is out of bounds.
+    fn next(&mut self) -> Result<u8> {
+        let value = *self
+            .memory
+            .get(self.pc as usize)
+            .ok_or_else(|| anyhow!("memory out of bounds: {:#x}", self.pc))?;
         self.pc += 1;
-        value
+        Ok(value)
     }
 
     /// Load bytes into memory at the given address.
@@ -160,19 +177,19 @@ impl Machine {
 
     /// Disassemble the next instruction.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the instruction is unknown.
+    /// May return an error if unable to disassemble next instruction.
     #[must_use]
-    pub fn disassemble_next(&self) -> String {
-        let opcode = self.memory.get(self.pc as usize).unwrap();
-        let instruction = self.instructions.get(opcode).unwrap();
+    pub fn disassemble_next(&self) -> Option<String> {
+        let opcode = self.memory.get(self.pc as usize)?;
+        let instruction = self.instructions.get(opcode)?;
         let mut disassembly = instruction.mnemonic.clone();
         if instruction.operation.takes_arg() {
-            let value = self.memory.get(self.pc as usize + 1).unwrap();
-            write!(disassembly, " {value:04x}").unwrap();
+            let value = self.memory.get(self.pc as usize + 1)?;
+            write!(disassembly, " {value:04x}").ok()?;
         }
-        disassembly
+        Some(disassembly)
     }
 }
 
@@ -187,7 +204,9 @@ impl Display for Machine {
         for value in self.registers.values() {
             write!(f, "{value:04x} ")?;
         }
-        write!(f, ": {}", self.disassemble_next())?;
+        if let Some(instruction) = self.disassemble_next() {
+            write!(f, ": {instruction}")?;
+        }
         writeln!(f)?;
         Ok(())
     }
@@ -275,7 +294,7 @@ mod tests {
 
         machine.load(0, &[0x00]).unwrap();
 
-        machine.step();
+        machine.step().unwrap();
 
         assert_eq!(machine.pc, 1);
     }

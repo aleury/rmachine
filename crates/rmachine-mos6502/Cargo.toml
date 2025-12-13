@@ -1,5 +1,5 @@
 [package]
-name = "rmachine-6502"
+name = "rmachine-mos6502"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,4 +11,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.53", features = ["derive"] }
 rmachine-core = { path = "../rmachine-core" }

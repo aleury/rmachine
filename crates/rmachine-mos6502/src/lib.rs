@@ -62,7 +62,7 @@ mod tests {
 
         machine.load(0, &[0xE8]).unwrap();
 
-        machine.step();
+        machine.step().unwrap();
 
         let want = 1;
         let got = machine.registers.get(&"x".into()).copied().unwrap();
@@ -75,7 +75,7 @@ mod tests {
 
         machine.load(0, &[0xA9, 0xFF]).unwrap();
 
-        machine.step();
+        machine.step().unwrap();
 
         let want = 0xFF;
         let got = machine.registers.get(&"a".into()).copied().unwrap();

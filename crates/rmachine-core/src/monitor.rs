@@ -1,4 +1,7 @@
+use std::io::{Write, stdin, stdout};
+
 use crate::Machine;
+use anyhow::{Result, bail};
 
 pub struct Monitor<'a> {
     pub debug: bool,
@@ -13,51 +16,52 @@ impl<'a> Monitor<'a> {
         }
     }
 
-    pub fn new_with_debug(machine: &'a mut Machine) -> Self {
-        Self {
-            debug: true,
-            machine,
-        }
-    }
-
-    pub fn run(&mut self) {
-        // let mut input = String::new();
+    /// Run monitor until the machine halts.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the machine encounters an error.
+    pub fn run(&mut self) -> Result<()> {
+        let mut input = String::new();
 
         loop {
             if !self.debug {
-                self.machine.run();
+                self.machine.run()?;
                 break;
             }
 
             println!("{}", self.machine);
-
-            self.machine.step();
-
-            // print!("> ");
-            // stdout().flush()?;
-            // let n = stdin().read_line(&mut input)?;
-            // if n == 0 {
-            //     break;
-            // }
-            // match input.trim_end() {
-            //     "q" => break,
-            //     "n" | "" => {
-            //         let mut mysys = &mut sys; // Yeah, I got problems
-            //         m.execute_next(&mut mysys).or_else(|e| {
-            //             print_state(&m);
-            //             bail!(e)
-            //         })?;
-            //     }
-            //     "r" => {
-            //         m.run(&mut sys).or_else(|e| {
-            //             print_state(&m);
-            //             bail!(e)
-            //         })?;
-            //     }
-            //     "?" | "h" | "help" => println!("{HELP}"),
-            //     cmd => println!("Unknown command '{cmd}' (type '?' for help)"),
-            // }
-            // input.clear();
+            print!("> ");
+            stdout().flush()?;
+            let n = stdin().read_line(&mut input)?;
+            if n == 0 {
+                break;
+            }
+            match input.trim_end() {
+                "q" => break,
+                "n" | "" => {
+                    self.machine.step().or_else(|e| {
+                        println!("{}", self.machine);
+                        bail!(e)
+                    })?;
+                }
+                "r" => self.machine.run().or_else(|e| {
+                    println!("{}", self.machine);
+                    bail!(e)
+                })?,
+                "?" | "h" | "help" => println!("{HELP}\n"),
+                cmd => println!("Unknown command '{cmd}' (type '?' for help)"),
+            }
+            input.clear();
         }
+
+        Ok(())
     }
 }
+
+const HELP: &str = "Commands:
+Enter - execute next instruction
+n - execute next instruction
+q - quit
+r - run to next breakpoint
+? - help";
