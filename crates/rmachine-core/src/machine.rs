@@ -33,6 +33,7 @@ pub struct Machine {
     memory: Vec<u8>,
     pc: u16,
     pub registers: HashMap<&'static str, u8>,
+    register_list: &'static [&'static str],
     instructions: HashMap<u8, &'static Instruction>,
 }
 
@@ -56,7 +57,8 @@ impl MachineBuilder {
     }
 
     #[must_use]
-    pub fn with_registers(mut self, registers: &[&'static str]) -> Self {
+    pub fn with_registers(mut self, registers: &'static [&'static str]) -> Self {
+        self.machine.register_list = registers;
         for register in registers {
             self.machine.registers.insert(register, 0);
         }
@@ -98,7 +100,7 @@ impl Machine {
         let instruction = self
             .instructions
             .get(&opcode)
-            .cloned()
+            .copied()
             .ok_or_else(|| anyhow!("opcode not found: {opcode}"))?;
 
         #[expect(unreachable_patterns, reason = "we're not done yet")]
@@ -113,23 +115,45 @@ impl Machine {
                 ..
             } => {
                 let imm = self.next()?;
-                self.registers
-                    .entry(register)
-                    .and_modify(|value| *value = imm);
+                let reg = self.reg_mut(register);
+                *reg += imm;
             }
             Instruction {
                 operation: Operation::IncrementRegister,
                 register,
                 ..
             } => {
-                self.registers
-                    .entry(register)
-                    .and_modify(|value| *value += 1);
+                let reg = self.reg_mut(register);
+                *reg += 1;
             }
             instruction => unimplemented!("unknown instruction: {instruction:#?}"),
         }
-
         Ok(())
+    }
+
+    /// Returns a copy of the named register contents.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the named register does not exist.
+    pub fn reg(&mut self, reg_name: &str) -> u8 {
+        self.registers
+            .get(reg_name)
+            .copied()
+            .ok_or_else(|| format!("undefined register '{reg_name}'"))
+            .unwrap()
+    }
+
+    /// Returns a mutable reference to the named register contents.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the named register does not exist.
+    pub fn reg_mut(&mut self, reg_name: &str) -> &mut u8 {
+        self.registers
+            .get_mut(reg_name)
+            .ok_or_else(|| format!("undefined register '{reg_name}'"))
+            .unwrap()
     }
 
     /// Fetch the next byte from memory.
@@ -180,19 +204,23 @@ impl Machine {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "pc   ")?;
-        for reg in self.registers.keys() {
-            write!(f, "{reg:4} ")?;
+        write!(f, "PC   ")?;
+        for reg in self.register_list {
+            write!(f, "{reg:} ")?;
         }
-        writeln!(f)?;
-        write!(f, "{:04x} ", self.pc)?;
-        for value in self.registers.values() {
-            write!(f, "{value:04x} ")?;
+        writeln!(f, "INST")?;
+        write!(f, "{:04X} ", self.pc)?;
+        for reg in self.register_list {
+            write!(
+                f,
+                "{:02X} ",
+                self.registers
+                    .get(reg)
+                    .expect("reg should have a hashmap entry")
+            )?;
         }
-        if let Some(instruction) = self.disassemble_next() {
-            write!(f, ": {instruction}")?;
-        }
-        writeln!(f)?;
+        let instruction = self.disassemble_next().unwrap_or("???".into());
+        writeln!(f, "{instruction}")?;
         Ok(())
     }
 }
@@ -250,7 +278,7 @@ mod tests {
     use super::*;
 
     const REGISTERS: &[&str] = &["A", "X", "Y"];
-    
+
     const INSTRUCTIONS: &[Instruction] = &[
         Instruction {
             mnemonic: "NOP",

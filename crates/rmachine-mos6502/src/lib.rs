@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use rmachine_core::prelude::*;
 
-const REGISTERS: &[&str] = &["PC", "SR", "AC", "XR", "YR", "SP"];
+const REGISTERS: &[&str] = &["SR", "AC", "XR", "YR", "SP"];
 
 const INSTRUCTIONS: &[Instruction] = &[
     Instruction {
@@ -12,10 +12,16 @@ const INSTRUCTIONS: &[Instruction] = &[
         register: "AC",
     },
     Instruction {
-        mnemonic: "LDA",
+        mnemonic: "INY",
+        opcode: 0xC8,
+        operation: Operation::IncrementRegister,
+        register: "YR",
+    },
+    Instruction {
+        mnemonic: "INX",
         opcode: 0xE8,
         operation: Operation::IncrementRegister,
-        register: "X",
+        register: "XR",
     },
 ];
 
@@ -59,28 +65,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn machine_6502_increments_register_x() {
+    fn machine_6502_increments_registers_x_and_y() {
         let mut machine = MOS6502::new();
-
-        machine.load(0, &[0xE8]).unwrap();
-
+        machine.load(0, &[0xE8, 0xC8]).unwrap();
         machine.step().unwrap();
-
-        let want = 1;
-        let got = machine.registers.get("X").copied().unwrap();
-        assert_eq!(want, got);
+        assert_eq!(machine.reg("XR"), 1, "wrong X value");
+        machine.step().unwrap();
+        assert_eq!(machine.reg("YR"), 1, "wrong Y value");
     }
 
     #[test]
     fn machine_6502_loads_immediate_into_register_a() {
         let mut machine = MOS6502::new();
-
         machine.load(0, &[0xA9, 0xFF]).unwrap();
-
         machine.step().unwrap();
-
-        let want = 0xFF;
-        let got = machine.registers.get("AC").copied().unwrap();
-        assert_eq!(want, got);
+        assert_eq!(machine.reg("AC"), 0xFF, "wrong AC value");
     }
 }
