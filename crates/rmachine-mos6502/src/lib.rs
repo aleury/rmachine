@@ -2,6 +2,29 @@ use std::ops::{Deref, DerefMut};
 
 use rmachine_core::prelude::*;
 
+const REGISTERS: &[&str] = &["SR", "AC", "XR", "YR", "SP"];
+
+const INSTRUCTIONS: &[Instruction] = &[
+    Instruction {
+        mnemonic: "LDA",
+        opcode: 0xA9,
+        operation: Operation::LoadImm,
+        register: "AC",
+    },
+    Instruction {
+        mnemonic: "INY",
+        opcode: 0xC8,
+        operation: Operation::IncrementRegister,
+        register: "YR",
+    },
+    Instruction {
+        mnemonic: "INX",
+        opcode: 0xE8,
+        operation: Operation::IncrementRegister,
+        register: "XR",
+    },
+];
+
 #[derive(Debug)]
 pub struct MOS6502(Machine);
 
@@ -28,25 +51,10 @@ impl DerefMut for MOS6502 {
 
 impl Default for MOS6502 {
     fn default() -> Self {
-        let registers = vec!["a", "x", "y", "f"];
-        let instructions = vec![
-            Instruction {
-                mnemonic: "lda".to_string(),
-                opcode: 0xA9,
-                operation: Operation::LoadImm,
-                register: Register("a"),
-            },
-            Instruction {
-                mnemonic: "inx".to_string(),
-                opcode: 0xE8,
-                operation: Operation::IncrementRegister,
-                register: Register("x"),
-            },
-        ];
         let machine = MachineBuilder::default()
             .with_memory(1024)
-            .with_registers(registers)
-            .with_instructions(instructions)
+            .with_registers(REGISTERS)
+            .with_instructions(INSTRUCTIONS)
             .build();
         Self(machine)
     }
@@ -57,28 +65,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn machine_6502_increments_register_x() {
+    fn machine_6502_increments_registers_x_and_y() {
         let mut machine = MOS6502::new();
-
-        machine.load(0, &[0xE8]).unwrap();
-
+        machine.load(0, &[0xE8, 0xC8]).unwrap();
         machine.step().unwrap();
-
-        let want = 1;
-        let got = machine.registers.get(&"x".into()).copied().unwrap();
-        assert_eq!(want, got);
+        assert_eq!(machine.reg("XR"), 1, "wrong X value");
+        machine.step().unwrap();
+        assert_eq!(machine.reg("YR"), 1, "wrong Y value");
     }
 
     #[test]
     fn machine_6502_loads_immediate_into_register_a() {
         let mut machine = MOS6502::new();
-
         machine.load(0, &[0xA9, 0xFF]).unwrap();
-
         machine.step().unwrap();
-
-        let want = 0xFF;
-        let got = machine.registers.get(&"a".into()).copied().unwrap();
-        assert_eq!(want, got);
+        assert_eq!(machine.reg("AC"), 0xFF, "wrong AC value");
     }
 }
