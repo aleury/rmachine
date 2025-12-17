@@ -6,21 +6,6 @@ use std::fmt::Write;
 use anyhow::Result;
 use anyhow::anyhow;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Register(pub &'static str);
-
-impl From<&'static str> for Register {
-    fn from(value: &'static str) -> Self {
-        Self(value)
-    }
-}
-
-impl Display for Register {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Operation {
     NoOp,
@@ -37,18 +22,18 @@ impl Operation {
 
 #[derive(Debug, Clone)]
 pub struct Instruction {
-    pub mnemonic: String,
+    pub mnemonic: &'static str,
     pub opcode: u8,
     pub operation: Operation,
-    pub register: Register,
+    pub register: &'static str,
 }
 
 #[derive(Debug, Default)]
 pub struct Machine {
     memory: Vec<u8>,
     pc: u16,
-    pub registers: HashMap<Register, u8>,
-    instructions: HashMap<u8, Instruction>,
+    pub registers: HashMap<&'static str, u8>,
+    instructions: HashMap<u8, &'static Instruction>,
 }
 
 #[derive(Default)]
@@ -71,15 +56,15 @@ impl MachineBuilder {
     }
 
     #[must_use]
-    pub fn with_registers(mut self, registers: Vec<&'static str>) -> Self {
+    pub fn with_registers(mut self, registers: &[&'static str]) -> Self {
         for register in registers {
-            self.machine.registers.insert(Register(register), 0);
+            self.machine.registers.insert(register, 0);
         }
         self
     }
 
     #[must_use]
-    pub fn with_instructions(mut self, instructions: Vec<Instruction>) -> Self {
+    pub fn with_instructions(mut self, instructions: &'static [Instruction]) -> Self {
         for instruction in instructions {
             self.machine
                 .instructions
@@ -129,7 +114,7 @@ impl Machine {
             } => {
                 let imm = self.next()?;
                 self.registers
-                    .entry(register.clone())
+                    .entry(register)
                     .and_modify(|value| *value = imm);
             }
             Instruction {
@@ -138,7 +123,7 @@ impl Machine {
                 ..
             } => {
                 self.registers
-                    .entry(register.clone())
+                    .entry(register)
                     .and_modify(|value| *value += 1);
             }
             instruction => unimplemented!("unknown instruction: {instruction:#?}"),
@@ -184,7 +169,7 @@ impl Machine {
     pub fn disassemble_next(&self) -> Option<String> {
         let opcode = self.memory.get(self.pc as usize)?;
         let instruction = self.instructions.get(opcode)?;
-        let mut disassembly = instruction.mnemonic.clone();
+        let mut disassembly = String::from(instruction.mnemonic);
         if instruction.operation.takes_arg() {
             let value = self.memory.get(self.pc as usize + 1)?;
             write!(disassembly, " {value:04x}").ok()?;
@@ -264,27 +249,28 @@ impl Display for Machine {
 mod tests {
     use super::*;
 
-    fn new_tiny_machine() -> Machine {
-        let registers = vec!["a", "x", "y"];
-        let instructions = vec![
-            Instruction {
-                mnemonic: "nop".to_string(),
-                opcode: 0x00,
-                operation: Operation::NoOp,
-                register: Register::default(),
-            },
-            Instruction {
-                mnemonic: "lda".to_string(),
-                opcode: 0x01,
-                operation: Operation::LoadImm,
-                register: Register("a"),
-            },
-        ];
+    const REGISTERS: &[&str] = &["A", "X", "Y"];
+    
+    const INSTRUCTIONS: &[Instruction] = &[
+        Instruction {
+            mnemonic: "NOP",
+            opcode: 0x00,
+            operation: Operation::NoOp,
+            register: "",
+        },
+        Instruction {
+            mnemonic: "LDA",
+            opcode: 0x01,
+            operation: Operation::LoadImm,
+            register: "A",
+        },
+    ];
 
+    fn new_tiny_machine() -> Machine {
         MachineBuilder::default()
             .with_memory(1024)
-            .with_registers(registers)
-            .with_instructions(instructions)
+            .with_registers(REGISTERS)
+            .with_instructions(INSTRUCTIONS)
             .build()
     }
 

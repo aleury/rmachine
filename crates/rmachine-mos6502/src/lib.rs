@@ -2,6 +2,23 @@ use std::ops::{Deref, DerefMut};
 
 use rmachine_core::prelude::*;
 
+const REGISTERS: &[&str] = &["PC", "AC", "X", "Y", "SR", "SP"];
+
+const INSTRUCTIONS: &[Instruction] = &[
+    Instruction {
+        mnemonic: "lda",
+        opcode: 0xA9,
+        operation: Operation::LoadImm,
+        register: "AC",
+    },
+    Instruction {
+        mnemonic: "inx",
+        opcode: 0xE8,
+        operation: Operation::IncrementRegister,
+        register: "X",
+    },
+];
+
 #[derive(Debug)]
 pub struct MOS6502(Machine);
 
@@ -28,25 +45,10 @@ impl DerefMut for MOS6502 {
 
 impl Default for MOS6502 {
     fn default() -> Self {
-        let registers = vec!["a", "x", "y", "f"];
-        let instructions = vec![
-            Instruction {
-                mnemonic: "lda".to_string(),
-                opcode: 0xA9,
-                operation: Operation::LoadImm,
-                register: Register("a"),
-            },
-            Instruction {
-                mnemonic: "inx".to_string(),
-                opcode: 0xE8,
-                operation: Operation::IncrementRegister,
-                register: Register("x"),
-            },
-        ];
         let machine = MachineBuilder::default()
             .with_memory(1024)
-            .with_registers(registers)
-            .with_instructions(instructions)
+            .with_registers(REGISTERS)
+            .with_instructions(INSTRUCTIONS)
             .build();
         Self(machine)
     }
@@ -65,7 +67,7 @@ mod tests {
         machine.step().unwrap();
 
         let want = 1;
-        let got = machine.registers.get(&"x".into()).copied().unwrap();
+        let got = machine.registers.get("X").copied().unwrap();
         assert_eq!(want, got);
     }
 
@@ -78,7 +80,7 @@ mod tests {
         machine.step().unwrap();
 
         let want = 0xFF;
-        let got = machine.registers.get(&"a".into()).copied().unwrap();
+        let got = machine.registers.get("AC").copied().unwrap();
         assert_eq!(want, got);
     }
 }
