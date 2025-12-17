@@ -2,17 +2,17 @@ use std::ops::{Deref, DerefMut};
 
 use rmachine_core::prelude::*;
 
-const REGISTERS: &[&str] = &["PC", "AC", "X", "Y", "SR", "SP"];
+const REGISTERS: &[&str] = &["PC", "SR", "AC", "XR", "YR", "SP"];
 
 const INSTRUCTIONS: &[Instruction] = &[
     Instruction {
-        mnemonic: "lda",
+        mnemonic: "LDA",
         opcode: 0xA9,
         operation: Operation::LoadImm,
         register: "AC",
     },
     Instruction {
-        mnemonic: "inx",
+        mnemonic: "LDA",
         opcode: 0xE8,
         operation: Operation::IncrementRegister,
         register: "X",
