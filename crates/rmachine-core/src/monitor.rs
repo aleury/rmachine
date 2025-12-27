@@ -26,7 +26,7 @@ impl<'a> Monitor<'a> {
 
         loop {
             if !self.debug {
-                self.machine.run()?;
+                self.machine.run();
                 break;
             }
 
@@ -45,10 +45,7 @@ impl<'a> Monitor<'a> {
                         bail!(e)
                     })?;
                 }
-                "r" => self.machine.run().or_else(|e| {
-                    println!("{}", self.machine);
-                    bail!(e)
-                })?,
+                "r" => self.machine.run(),
                 "?" | "h" | "help" => println!("{HELP}\n"),
                 cmd => println!("Unknown command '{cmd}' (type '?' for help)"),
             }

@@ -7,25 +7,18 @@ use anyhow::Result;
 use anyhow::anyhow;
 
 #[derive(Debug, Clone)]
-pub enum Operation {
-    NoOp,
-    LoadImm,
-    IncrementRegister,
-}
-
-impl Operation {
-    #[must_use]
-    pub fn takes_arg(&self) -> bool {
-        matches!(self, Operation::LoadImm)
-    }
+pub enum Operands {
+    Zero,
+    One,
+    Two,
 }
 
 #[derive(Debug, Clone)]
 pub struct Instruction {
     pub mnemonic: &'static str,
     pub opcode: u8,
-    pub operation: Operation,
-    pub register: &'static str,
+    pub operands: Operands,
+    pub execute: fn(&mut Machine),
 }
 
 #[derive(Debug, Default)]
@@ -65,12 +58,23 @@ impl MachineBuilder {
         self
     }
 
+    /// Add instructions to builder.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if an instruction with the same opcode already exists.
     #[must_use]
     pub fn with_instructions(mut self, instructions: &'static [Instruction]) -> Self {
         for instruction in instructions {
-            self.machine
+            let present = self
+                .machine
                 .instructions
                 .insert(instruction.opcode, instruction);
+            assert!(
+                present.is_none(),
+                "duplicate opcode: 0x{:0X}",
+                instruction.opcode
+            );
         }
         self
     }
@@ -82,12 +86,11 @@ impl MachineBuilder {
 }
 
 impl Machine {
-    /// # Errors
-    ///
-    /// May return an error if the execution fails.
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) {
         loop {
-            self.step()?;
+            if self.step().is_err() {
+                break;
+            }
         }
     }
 
@@ -95,7 +98,7 @@ impl Machine {
     ///
     /// May return an error if the execution fails.
     pub fn step(&mut self) -> Result<()> {
-        let opcode = self.next()?;
+        let opcode = self.fetch()?;
 
         let instruction = self
             .instructions
@@ -103,31 +106,8 @@ impl Machine {
             .copied()
             .ok_or_else(|| anyhow!("opcode not found: {opcode}"))?;
 
-        #[expect(unreachable_patterns, reason = "we're not done yet")]
-        match instruction {
-            Instruction {
-                operation: Operation::NoOp,
-                ..
-            } => {}
-            Instruction {
-                operation: Operation::LoadImm,
-                register,
-                ..
-            } => {
-                let imm = self.next()?;
-                let reg = self.reg_mut(register);
-                *reg += imm;
-            }
-            Instruction {
-                operation: Operation::IncrementRegister,
-                register,
-                ..
-            } => {
-                let reg = self.reg_mut(register);
-                *reg += 1;
-            }
-            instruction => unimplemented!("unknown instruction: {instruction:#?}"),
-        }
+        (instruction.execute)(self);
+
         Ok(())
     }
 
@@ -156,12 +136,24 @@ impl Machine {
             .unwrap()
     }
 
+    /// Sets the named register contents.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the named register does not exist.
+    pub fn reg_set(&mut self, reg_name: &'static str, value: u8) {
+        self.registers
+            .insert(reg_name, value)
+            .ok_or_else(|| format!("undefined register '{reg_name}'"))
+            .unwrap();
+    }
+
     /// Fetch the next byte from memory.
     ///
     /// # Errors
     ///
     /// Returns an error if the address is out of bounds.
-    fn next(&mut self) -> Result<u8> {
+    pub fn fetch(&mut self) -> Result<u8> {
         let value = *self
             .memory
             .get(self.pc as usize)
@@ -184,6 +176,21 @@ impl Machine {
         Ok(())
     }
 
+    /// Gets opcode for instruction mnemonic.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mnemonic is not found.
+    #[must_use]
+    pub fn opcode(&self, mnemonic: &str) -> u8 {
+        self.instructions
+            .values()
+            .find(|instr| instr.mnemonic == mnemonic)
+            .map(|instr| instr.opcode)
+            .ok_or_else(|| format!("undefined mnemonic not found: {mnemonic}"))
+            .unwrap()
+    }
+
     /// Disassemble the next instruction.
     ///
     /// # Errors
@@ -194,7 +201,7 @@ impl Machine {
         let opcode = self.memory.get(self.pc as usize)?;
         let instruction = self.instructions.get(opcode)?;
         let mut disassembly = String::from(instruction.mnemonic);
-        if instruction.operation.takes_arg() {
+        if let Operands::One = instruction.operands {
             let value = self.memory.get(self.pc as usize + 1)?;
             write!(disassembly, " {value:04x}").ok()?;
         }
@@ -225,54 +232,6 @@ impl Display for Machine {
     }
 }
 
-// #[derive(Debug, Default)]
-// pub struct Machine<ISA: InstructionSet> {
-//     cpu: ISA::Cpu,
-//     memory: Memory,
-//     _phantom: PhantomData<ISA>,
-// }
-
-// impl<ISA: InstructionSet> Machine<ISA> {
-//     #[must_use]
-//     /// Create a new machine with the given memory size.
-//     pub fn new(memory_size: usize) -> Self {
-//         Self {
-//             cpu: ISA::Cpu::default(),
-//             memory: Memory::new(memory_size),
-//             _phantom: PhantomData,
-//         }
-//     }
-
-//     /// Step the machine by one instruction
-//     ///
-//     /// # Errors
-//     ///
-//     /// Returns an error if the instruction is illegal or if there is an error executing the instruction.
-//     pub fn step(&mut self) -> Result<()> {
-//         self.cpu.step(&mut self.memory)
-//     }
-
-//     /// Run the machine until an error occurs.
-//     ///
-//     /// # Errors
-//     ///
-//     /// Returns an error when an instruction fails (illegal opcode, memory fault, etc.)
-//     pub fn run(&mut self) -> Result<()> {
-//         loop {
-//             self.step()?;
-//         }
-//     }
-
-//     /// Load a program into memory at the given address.
-//     ///
-//     /// # Errors
-//     ///
-//     /// Returns an error if there is an error writing to memory.
-//     pub fn load(&mut self, addr: usize, program: &[u8]) -> Result<()> {
-//         self.memory.load(addr, program)
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,14 +242,17 @@ mod tests {
         Instruction {
             mnemonic: "NOP",
             opcode: 0x00,
-            operation: Operation::NoOp,
-            register: "",
+            operands: Operands::Zero,
+            execute: |_| (),
         },
         Instruction {
             mnemonic: "LDA",
             opcode: 0x01,
-            operation: Operation::LoadImm,
-            register: "A",
+            operands: Operands::One,
+            execute: |m| {
+                let value = m.fetch().unwrap();
+                m.reg_set("AC", value);
+            },
         },
     ];
 

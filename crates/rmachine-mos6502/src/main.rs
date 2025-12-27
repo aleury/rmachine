@@ -4,6 +4,8 @@ use clap::Parser;
 use rmachine_core::monitor::Monitor;
 use rmachine_mos6502::MOS6502;
 
+const CARRY: u8 = 0b0000_0001;
+
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
 struct Cli {
@@ -15,10 +17,16 @@ struct Cli {
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    let mut machine = MOS6502::new();
-    machine.load(0, &[0xA9, 0xFF]).expect("load program");
+    let mut m = MOS6502::new();
+    // let program = [machine.opcode("LDA"), 0xFF];
 
-    let mut mon = Monitor::new(&mut machine);
+    let status = m.reg_mut("SR");
+    *status |= CARRY;
+
+    let program = [m.opcode("LDA"), 0xFF, m.opcode("ADC"), 0x01];
+    m.load(0, &program).expect("load program");
+
+    let mut mon = Monitor::new(&mut m);
     mon.debug = args.debug;
     mon.run()
 }
