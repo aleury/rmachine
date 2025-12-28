@@ -2,93 +2,113 @@ use std::ops::{Deref, DerefMut};
 
 use rmachine_core::prelude::*;
 
-const REGISTERS: &[&str] = &["SR", "AC", "XR", "YR", "SP"];
-
 const CARRY: u8 = 0b0000_0001;
 const DECIMAL: u8 = 0b0000_1000;
-
-const INSTRUCTIONS: &[Instruction] = &[
-    Instruction {
-        mnemonic: "CLC",
-        opcode: 0x18,
-        operands: Operands::Zero,
-        execute: |m| {
-            let status = m.reg_mut("SR");
-            *status &= !CARRY;
-        },
-        cycles: 2,
-    },
-    Instruction {
-        mnemonic: "CLD",
-        opcode: 0xD8,
-        operands: Operands::Zero,
-        execute: |m| {
-            let status = m.reg_mut("SR");
-            *status &= !DECIMAL;
-        },
-        cycles: 2,
-    },
-    Instruction {
-        mnemonic: "ADC",
-        opcode: 0x69,
-        operands: Operands::One,
-        execute: |m| {
-            let carry = m.reg("SR") & CARRY;
-            let operand = m.fetch().unwrap();
-            let reg = m.reg_mut("AC");
-
-            let (result, overflow) = reg.overflowing_add(operand);
-            let (result, overflow2) = result.overflowing_add(carry);
-            *reg = result;
-
-            let status = m.reg_mut("SR");
-            if overflow || overflow2 {
-                *status |= CARRY;
-            } else {
-                *status &= !CARRY;
-            }
-        },
-        cycles: 2,
-    },
-    Instruction {
-        mnemonic: "LDA",
-        opcode: 0xA9,
-        operands: Operands::One,
-        execute: |m| {
-            let value = m.fetch().unwrap();
-            m.reg_set("AC", value);
-        },
-        cycles: 2,
-    },
-    Instruction {
-        mnemonic: "INY",
-        opcode: 0xC8,
-        operands: Operands::Zero,
-        execute: |m| {
-            let reg = m.reg_mut("YR");
-            *reg = reg.wrapping_add(1);
-        },
-        cycles: 2,
-    },
-    Instruction {
-        mnemonic: "INX",
-        opcode: 0xE8,
-        operands: Operands::Zero,
-        execute: |m| {
-            let reg = m.reg_mut("XR");
-            *reg = reg.wrapping_add(1);
-        },
-        cycles: 2,
-    },
-];
 
 #[derive(Debug)]
 pub struct MOS6502(Machine);
 
 impl MOS6502 {
+    /// Constructs a new 6502.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any duplicate opcodes are defined.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        MOS6502::default()
+    }
+}
+
+impl Default for MOS6502 {
+    /// Constructs a new 6502.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any duplicate opcodes are defined.
+    fn default() -> Self {
+        Self(
+            MachineBuilder {
+                memory_size: 1024,
+                registers: &["SR", "AC", "XR", "YR", "SP"],
+                instructions: &[
+                    Instruction {
+                        mnemonic: "CLC",
+                        opcode: 0x18,
+                        operands: Operands::Zero,
+                        execute: |m| {
+                            let status = m.reg_mut("SR");
+                            *status &= !CARRY;
+                        },
+                        cycles: 2,
+                    },
+                    Instruction {
+                        mnemonic: "CLD",
+                        opcode: 0xD8,
+                        operands: Operands::Zero,
+                        execute: |m| {
+                            let status = m.reg_mut("SR");
+                            *status &= !DECIMAL;
+                        },
+                        cycles: 2,
+                    },
+                    Instruction {
+                        mnemonic: "ADC",
+                        opcode: 0x69,
+                        operands: Operands::One,
+                        execute: |m| {
+                            let carry = m.reg("SR") & CARRY;
+                            let operand = m.fetch().unwrap();
+                            let reg = m.reg_mut("AC");
+
+                            let (result, overflow) = reg.overflowing_add(operand);
+                            let (result, overflow2) = result.overflowing_add(carry);
+                            *reg = result;
+
+                            let status = m.reg_mut("SR");
+                            if overflow || overflow2 {
+                                *status |= CARRY;
+                            } else {
+                                *status &= !CARRY;
+                            }
+                        },
+                        cycles: 2,
+                    },
+                    Instruction {
+                        mnemonic: "LDA",
+                        opcode: 0xA9,
+                        operands: Operands::One,
+                        execute: |m| {
+                            let value = m.fetch().unwrap();
+                            m.reg_set("AC", value);
+                        },
+                        cycles: 2,
+                    },
+                    Instruction {
+                        mnemonic: "INY",
+                        opcode: 0xC8,
+                        operands: Operands::Zero,
+                        execute: |m| {
+                            let reg = m.reg_mut("YR");
+                            *reg = reg.wrapping_add(1);
+                        },
+                        cycles: 2,
+                    },
+                    Instruction {
+                        mnemonic: "INX",
+                        opcode: 0xE8,
+                        operands: Operands::Zero,
+                        execute: |m| {
+                            let reg = m.reg_mut("XR");
+                            *reg = reg.wrapping_add(1);
+                        },
+                        cycles: 2,
+                    },
+                ],
+                frequency_mhz: 1.0,
+            }
+            .build(),
+        )
     }
 }
 
@@ -103,17 +123,6 @@ impl Deref for MOS6502 {
 impl DerefMut for MOS6502 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-impl Default for MOS6502 {
-    fn default() -> Self {
-        let machine = MachineBuilder::default()
-            .with_memory(1024)
-            .with_registers(REGISTERS)
-            .with_instructions(INSTRUCTIONS)
-            .build();
-        Self(machine)
     }
 }
 
