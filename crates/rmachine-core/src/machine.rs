@@ -19,6 +19,7 @@ pub struct Instruction {
     pub opcode: u8,
     pub operands: Operands,
     pub execute: fn(&mut Machine),
+    pub cycles: usize,
 }
 
 #[derive(Debug, Default)]
@@ -28,6 +29,7 @@ pub struct Machine {
     pub registers: HashMap<&'static str, u8>,
     register_list: &'static [&'static str],
     instructions: HashMap<u8, &'static Instruction>,
+    cycles: usize,
 }
 
 #[derive(Default)]
@@ -107,7 +109,7 @@ impl Machine {
             .ok_or_else(|| anyhow!("opcode not found: {opcode}"))?;
 
         (instruction.execute)(self);
-
+        self.wait_cycles(instruction.cycles);
         Ok(())
     }
 
@@ -174,6 +176,10 @@ impl Machine {
             .ok_or_else(|| anyhow!("memory out of bounds: {addr:#x}"))?;
         slice.copy_from_slice(program);
         Ok(())
+    }
+
+    pub fn wait_cycles(&mut self, cycles: usize) {
+        self.cycles = self.cycles.wrapping_add(cycles);
     }
 
     /// Gets opcode for instruction mnemonic.
@@ -244,6 +250,7 @@ mod tests {
             opcode: 0x00,
             operands: Operands::Zero,
             execute: |_| (),
+            cycles: 2,
         },
         Instruction {
             mnemonic: "LDA",
@@ -253,6 +260,7 @@ mod tests {
                 let value = m.fetch().unwrap();
                 m.reg_set("AC", value);
             },
+            cycles: 2,
         },
     ];
 
@@ -273,6 +281,23 @@ mod tests {
         machine.step().unwrap();
 
         assert_eq!(machine.pc, 1);
+    }
+
+    #[test]
+    fn cycles_are_counted() {
+        let mut machine = new_tiny_machine();
+        machine
+            .load(
+                0,
+                &[
+                    0x00, // 0x0000 NOP (2 cycles)
+                    0x00, // 0x0001 NOP (2 cycles)
+                ],
+            )
+            .unwrap();
+        machine.step().unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cycles, 4);
     }
 
     // #[test]

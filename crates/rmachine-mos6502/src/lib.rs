@@ -16,6 +16,7 @@ const INSTRUCTIONS: &[Instruction] = &[
             let status = m.reg_mut("SR");
             *status &= !CARRY;
         },
+        cycles: 2,
     },
     Instruction {
         mnemonic: "CLD",
@@ -25,6 +26,7 @@ const INSTRUCTIONS: &[Instruction] = &[
             let status = m.reg_mut("SR");
             *status &= !DECIMAL;
         },
+        cycles: 2,
     },
     Instruction {
         mnemonic: "ADC",
@@ -46,6 +48,7 @@ const INSTRUCTIONS: &[Instruction] = &[
                 *status &= !CARRY;
             }
         },
+        cycles: 2,
     },
     Instruction {
         mnemonic: "LDA",
@@ -55,6 +58,7 @@ const INSTRUCTIONS: &[Instruction] = &[
             let value = m.fetch().unwrap();
             m.reg_set("AC", value);
         },
+        cycles: 2,
     },
     Instruction {
         mnemonic: "INY",
@@ -64,6 +68,7 @@ const INSTRUCTIONS: &[Instruction] = &[
             let reg = m.reg_mut("YR");
             *reg = reg.wrapping_add(1);
         },
+        cycles: 2,
     },
     Instruction {
         mnemonic: "INX",
@@ -73,6 +78,7 @@ const INSTRUCTIONS: &[Instruction] = &[
             let reg = m.reg_mut("XR");
             *reg = reg.wrapping_add(1);
         },
+        cycles: 2,
     },
 ];
 
