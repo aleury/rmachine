@@ -23,7 +23,12 @@ fn main() -> Result<()> {
     let status = m.reg_mut("SR");
     *status |= CARRY;
 
-    let program = [m.opcode("LDA"), 0xFF, m.opcode("ADC"), 0x01];
+    // let program = [m.opcode("LDA"), 0xFF, m.opcode("ADC"), 0x01];
+    let program = [
+        0xAD, 0x04, 0x00, // 0x0000 LDA $0004
+        0x00, //             0x0003 HLT
+        0xFF, //             0x0004 DB #FF
+    ];
     m.load(0, &program).expect("load program");
 
     let mut mon = Monitor::new(&mut m);

@@ -9,19 +9,20 @@ use anyhow::Result;
 use anyhow::anyhow;
 
 #[derive(Debug, Clone)]
-pub enum Operands {
-    Zero,
-    One,
-    Two,
+pub enum Mode {
+    Implied,
+    Immediate,
+    Absolute,
 }
 
 #[derive(Debug, Clone)]
 pub struct Instruction {
     pub mnemonic: &'static str,
+    pub mode: Mode,
     pub opcode: u8,
-    pub operands: Operands,
-    pub execute: fn(&mut Machine),
+    pub bytes: u8,
     pub cycles: u8,
+    pub execute: fn(&mut Machine),
 }
 
 #[derive(Debug)]
@@ -97,7 +98,7 @@ impl Machine {
     ///
     /// May return an error if the execution fails.
     pub fn step(&mut self) -> Result<()> {
-        let opcode = self.fetch()?;
+        let opcode = self.fetch();
 
         let instruction = self
             .instructions
@@ -108,6 +109,12 @@ impl Machine {
         (instruction.execute)(self);
         self.wait_cycles(instruction.cycles);
         Ok(())
+    }
+
+    /// Returns the program counter.
+    #[must_use]
+    pub fn pc(&self) -> u16 {
+        self.pc
     }
 
     /// Returns a copy of the named register contents.
@@ -152,13 +159,23 @@ impl Machine {
     /// # Errors
     ///
     /// Returns an error if the address is out of bounds.
-    pub fn fetch(&mut self) -> Result<u8> {
-        let value = *self
-            .memory
-            .get(self.pc as usize)
-            .ok_or_else(|| anyhow!("memory out of bounds: {:#x}", self.pc))?;
+    pub fn fetch(&mut self) -> u8 {
+        let value = self.get8(self.pc);
         self.pc += 1;
-        Ok(value)
+        value
+    }
+
+    /// Reads the byte at the given address from memory.
+    #[must_use]
+    pub fn get8(&self, addr: u16) -> u8 {
+        self.memory.get(addr as usize).copied().unwrap_or(0)
+    }
+
+    /// Reads the word at the given address from memory.
+    #[must_use]
+    pub fn get16(&self, addr: u16) -> u16 {
+        let le_bytes = [self.get8(addr), self.get8(addr + 1)];
+        u16::from_le_bytes(le_bytes)
     }
 
     /// Load bytes into memory at the given address.
@@ -211,21 +228,6 @@ impl Machine {
         }
     }
 
-    /// Gets opcode for instruction mnemonic.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the mnemonic is not found.
-    #[must_use]
-    pub fn opcode(&self, mnemonic: &str) -> u8 {
-        self.instructions
-            .values()
-            .find(|instr| instr.mnemonic == mnemonic)
-            .map(|instr| instr.opcode)
-            .ok_or_else(|| format!("undefined mnemonic not found: {mnemonic}"))
-            .unwrap()
-    }
-
     /// Disassemble the next instruction.
     ///
     /// # Errors
@@ -236,9 +238,17 @@ impl Machine {
         let opcode = self.memory.get(self.pc as usize)?;
         let instruction = self.instructions.get(opcode)?;
         let mut disassembly = String::from(instruction.mnemonic);
-        if let Operands::One = instruction.operands {
-            let value = self.memory.get(self.pc as usize + 1)?;
-            write!(disassembly, " {value:04x}").ok()?;
+        match instruction.bytes {
+            1 => {}
+            2 => {
+                let value = self.get8(self.pc.wrapping_add(1));
+                write!(disassembly, " {value:#04x}").ok()?;
+            }
+            3 => {
+                let value = self.get16(self.pc.wrapping_add(1));
+                write!(disassembly, " {value:#06x}").ok()?;
+            }
+            x => unreachable!("invalid number of bytes: {x}"),
         }
         Some(disassembly)
     }
@@ -278,20 +288,22 @@ mod tests {
             instructions: &[
                 Instruction {
                     mnemonic: "NOP",
+                    mode: Mode::Implied,
                     opcode: 0x00,
-                    operands: Operands::Zero,
-                    execute: |_| (),
+                    bytes: 1,
                     cycles: 2,
+                    execute: |_| (),
                 },
                 Instruction {
                     mnemonic: "LDA",
+                    mode: Mode::Immediate,
                     opcode: 0x01,
-                    operands: Operands::One,
+                    bytes: 2,
+                    cycles: 2,
                     execute: |m| {
-                        let value = m.fetch().unwrap();
+                        let value = m.fetch();
                         m.reg_set("AC", value);
                     },
-                    cycles: 2,
                 },
             ],
             frequency_mhz: 1.0,
@@ -325,6 +337,24 @@ mod tests {
         machine.step().unwrap();
         machine.step().unwrap();
         assert_eq!(machine.cycles, 4);
+    }
+
+    #[test]
+    fn get8_returns_a_byte_from_memory() {
+        let mut machine = new_tiny_machine();
+
+        machine.load(0, &[0xFF]).unwrap();
+
+        assert_eq!(machine.get8(0), 0xFF);
+    }
+
+    #[test]
+    fn get16_returns_a_16_bit_value_from_memory() {
+        let mut machine = new_tiny_machine();
+
+        machine.load(0, &[0xEF, 0xBE]).unwrap();
+
+        assert_eq!(machine.get16(0), 0xBEEF);
     }
 
     // #[test]
