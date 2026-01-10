@@ -117,8 +117,9 @@ impl Machine {
         self.pc
     }
 
-    pub fn pc_set(&mut self, value: u16) {
-        self.pc = value;
+    /// Advances the program counter by the given amount.
+    pub fn advance(&mut self, amount: u16) {
+        self.pc = self.pc.wrapping_add(amount);
     }
 
     /// Returns a copy of the named register contents.
