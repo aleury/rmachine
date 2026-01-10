@@ -22,17 +22,6 @@ fn adc(m: &mut Machine, operand: u8) {
 
 pub const INSTRUCTIONS: &[Instruction] = &[
     Instruction {
-        mnemonic: "CLC",
-        mode: Mode::Implied,
-        opcode: 0x18,
-        bytes: 1,
-        cycles: 2,
-        execute: |m| {
-            let status = m.reg_mut("SR");
-            *status &= !CARRY;
-        },
-    },
-    Instruction {
         mnemonic: "ADC",
         mode: Mode::Immediate,
         opcode: 0x69,
@@ -58,17 +47,47 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
-        mnemonic: "STA",
-        mode: Mode::Absolute,
-        opcode: 0x8D,
-        bytes: 3,
-        cycles: 4,
+        mnemonic: "CLC",
+        mode: Mode::Implied,
+        opcode: 0x18,
+        bytes: 1,
+        cycles: 2,
         execute: |m| {
-            let addr = m.get16(m.pc());
-            m.advance(2);
-
-            let value = m.reg("AC");
-            m.set8(addr, value);
+            let status = m.reg_mut("SR");
+            *status &= !CARRY;
+        },
+    },
+    Instruction {
+        mnemonic: "CLD",
+        mode: Mode::Implied,
+        opcode: 0xD8,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| {
+            let status = m.reg_mut("SR");
+            *status &= !DECIMAL;
+        },
+    },
+    Instruction {
+        mnemonic: "INX",
+        mode: Mode::Implied,
+        opcode: 0xE8,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| {
+            let reg = m.reg_mut("XR");
+            *reg = reg.wrapping_add(1);
+        },
+    },
+    Instruction {
+        mnemonic: "INY",
+        mode: Mode::Implied,
+        opcode: 0xC8,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| {
+            let reg = m.reg_mut("YR");
+            *reg = reg.wrapping_add(1);
         },
     },
     Instruction {
@@ -97,36 +116,17 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
-        mnemonic: "INY",
-        mode: Mode::Implied,
-        opcode: 0xC8,
-        bytes: 1,
-        cycles: 2,
+        mnemonic: "STA",
+        mode: Mode::Absolute,
+        opcode: 0x8D,
+        bytes: 3,
+        cycles: 4,
         execute: |m| {
-            let reg = m.reg_mut("YR");
-            *reg = reg.wrapping_add(1);
-        },
-    },
-    Instruction {
-        mnemonic: "CLD",
-        mode: Mode::Implied,
-        opcode: 0xD8,
-        bytes: 1,
-        cycles: 2,
-        execute: |m| {
-            let status = m.reg_mut("SR");
-            *status &= !DECIMAL;
-        },
-    },
-    Instruction {
-        mnemonic: "INX",
-        mode: Mode::Implied,
-        opcode: 0xE8,
-        bytes: 1,
-        cycles: 2,
-        execute: |m| {
-            let reg = m.reg_mut("XR");
-            *reg = reg.wrapping_add(1);
+            let addr = m.get16(m.pc());
+            m.advance(2);
+
+            let value = m.reg("AC");
+            m.set8(addr, value);
         },
     },
 ];
