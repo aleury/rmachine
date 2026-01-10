@@ -52,7 +52,16 @@ impl<'a> Monitor<'a> {
                         for col in 0..16 {
                             print!(" {:02X}", self.machine.get8(addr + col));
                         }
-                        println!();
+                        print!("  |");
+                        for col in 0..16 {
+                            let byte = self.machine.get8(addr + col);
+                            if byte.is_ascii_graphic() || byte == b' ' {
+                                print!("{}", byte as char);
+                            } else {
+                                print!(".");
+                            }
+                        }
+                        println!("|");
                     }
                 }
                 "r" => self.machine.run(),
