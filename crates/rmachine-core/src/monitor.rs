@@ -45,6 +45,16 @@ impl<'a> Monitor<'a> {
                         bail!(e)
                     })?;
                 }
+                "m" => {
+                    for row in 0..8 {
+                        let addr = row * 16;
+                        print!("{addr:04X}:");
+                        for col in 0..16 {
+                            print!(" {:02X}", self.machine.get8(addr + col));
+                        }
+                        println!();
+                    }
+                }
                 "r" => self.machine.run(),
                 "?" | "h" | "help" => println!("{HELP}\n"),
                 cmd => println!("Unknown command '{cmd}' (type '?' for help)"),
@@ -58,6 +68,7 @@ impl<'a> Monitor<'a> {
 
 const HELP: &str = "Commands:
 Enter - execute next instruction
+m - dump first 128 bytes of memory
 n - execute next instruction
 q - quit
 r - run to next breakpoint

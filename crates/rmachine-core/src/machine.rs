@@ -117,6 +117,10 @@ impl Machine {
         self.pc
     }
 
+    pub fn pc_set(&mut self, value: u16) {
+        self.pc = value;
+    }
+
     /// Returns a copy of the named register contents.
     ///
     /// # Panics
@@ -263,7 +267,7 @@ impl Machine {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PC   ")?;
+        write!(f, "\nPC   ")?;
         for reg in self.register_list {
             write!(f, "{reg:} ")?;
         }

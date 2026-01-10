@@ -47,10 +47,12 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         mnemonic: "ADC",
         mode: Mode::Absolute,
         opcode: 0x6D,
-        bytes: 2,
-        cycles: 2,
+        bytes: 3,
+        cycles: 4,
         execute: |m| {
             let addr = m.get16(m.pc());
+            m.pc_set(m.pc() + 2);
+
             let operand = m.get8(addr);
             adc(m, operand);
         },
@@ -63,6 +65,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 4,
         execute: |m| {
             let addr = m.get16(m.pc());
+            m.pc_set(m.pc() + 2);
+
             let value = m.reg("AC");
             m.set8(addr, value);
         },
@@ -86,6 +90,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 2,
         execute: |m| {
             let addr = m.get16(m.pc());
+            m.pc_set(m.pc() + 2);
+
             let value = m.get8(addr);
             m.reg_set("AC", value);
         },
