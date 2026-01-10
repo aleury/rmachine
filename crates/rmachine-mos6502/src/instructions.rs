@@ -56,6 +56,18 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "STA",
+        mode: Mode::Absolute,
+        opcode: 0x8D,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let addr = m.get16(m.pc());
+            let value = m.reg("AC");
+            m.set8(addr, value);
+        },
+    },
+    Instruction {
         mnemonic: "LDA",
         mode: Mode::Immediate,
         opcode: 0xA9,

@@ -178,6 +178,13 @@ impl Machine {
         u16::from_le_bytes(le_bytes)
     }
 
+    /// Writes a byte to memory at the given address.
+    pub fn set8(&mut self, addr: u16, value: u8) {
+        if let Some(byte) = self.memory.get_mut(addr as usize) {
+            *byte = value;
+        }
+    }
+
     /// Load bytes into memory at the given address.
     ///
     /// # Errors
@@ -355,6 +362,26 @@ mod tests {
         machine.load(0, &[0xEF, 0xBE]).unwrap();
 
         assert_eq!(machine.get16(0), 0xBEEF);
+    }
+
+    #[test]
+    fn set8_writes_a_byte_to_memory() {
+        let mut machine = new_tiny_machine();
+
+        machine.set8(0, 0x42);
+
+        assert_eq!(machine.get8(0), 0x42);
+    }
+
+    #[test]
+    fn set8_ignores_out_of_bounds_writes() {
+        let mut machine = new_tiny_machine();
+
+        // Memory size is 1024 bytes (0-1023), so address 2000 is out of bounds
+        machine.set8(2000, 0xFF);
+
+        // Should not panic, and reading out of bounds returns 0
+        assert_eq!(machine.get8(2000), 0x00);
     }
 
     // #[test]

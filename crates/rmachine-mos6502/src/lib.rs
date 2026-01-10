@@ -181,4 +181,20 @@ mod tests {
         assert_eq!(m.reg("AC"), 0x00);
         assert_eq!(m.reg("SR") & CARRY, 0x01);
     }
+
+    #[test]
+    fn sta_absolute_stores_accumulator_at_address() {
+        let mut m = MOS6502::new();
+
+        m.reg_set("AC", 0x42);
+
+        let program = [
+            0x8D, 0x04, 0x00, // 0x0000 STA $0004
+            0x00, //             0x0003 HLT
+        ];
+        m.load(0, &program).unwrap();
+        m.run();
+
+        assert_eq!(m.get8(0x0004), 0x42);
+    }
 }
