@@ -63,7 +63,10 @@ mod tests {
     #[test]
     fn machine_6502_increments_registers_x_and_y() {
         let mut m = MOS6502::new();
-        let program = [m.opcode("INX"), m.opcode("INY")];
+        let program = [
+            0xE8, // 0x0000 INX
+            0xC8, // 0x0001 INY
+        ];
         m.load(0, &program).unwrap();
         m.run();
         assert_eq!(m.reg("XR"), 1, "wrong X value");
@@ -73,7 +76,24 @@ mod tests {
     #[test]
     fn machine_6502_loads_immediate_into_register_a() {
         let mut m = MOS6502::new();
-        let program = [m.opcode("LDA"), 0xFF];
+        let program = [
+            0xA9, 0xFF, // 0x0000 LDA #FF
+        ];
+        m.load(0, &program).unwrap();
+        m.run();
+
+        assert_eq!(m.reg("AC"), 0xFF, "wrong AC value");
+    }
+
+    #[test]
+    fn lda_absolute_loads_value_from_given_address() {
+        let mut m = MOS6502::new();
+
+        let program = [
+            0xAD, 0x04, 0x00, // 0x0000 LDA $0004
+            0x00, //             0x0003 HLT
+            0xFF, //             0x0004 DB #FF
+        ];
         m.load(0, &program).unwrap();
         m.run();
 
@@ -86,7 +106,9 @@ mod tests {
         let status = m.reg_mut("SR");
         *status |= CARRY;
 
-        let program = [m.opcode("CLC")];
+        let program = [
+            0x18, // 0x0000 CLC)
+        ];
         m.load(0, &program).unwrap();
         m.run();
 
@@ -99,7 +121,9 @@ mod tests {
         let status = m.reg_mut("SR");
         *status |= DECIMAL;
 
-        let program = [m.opcode("CLD")];
+        let program = [
+            0xD8, // 0x0000 CLD
+        ];
         m.load(0, &program).unwrap();
         m.run();
 
@@ -107,17 +131,70 @@ mod tests {
     }
 
     #[test]
-    fn adc_adds_to_register_with_carry_and_sets_carry() {
+    fn adc_adds_immediate_value_to_register_with_carry_and_sets_carry() {
         let mut m = MOS6502::new();
 
         let status = m.reg_mut("SR");
         *status |= CARRY;
 
-        let program = [m.opcode("LDA"), 0xFE, m.opcode("ADC"), 0x01];
+        let program = [
+            0xA9, 0xFE, // 0x0000 LDA #FE
+            0x69, 0x01, // 0x0002 ADC #01
+        ];
         m.load(0, &program).unwrap();
         m.run();
 
         assert_eq!(m.reg("AC"), 0x00);
         assert_eq!(m.reg("SR") & CARRY, 1);
+    }
+
+    #[test]
+    fn adc_absolute_adds_value_in_address_to_register() {
+        let mut m = MOS6502::new();
+
+        let program = [
+            0x6D, 0x04, 0x00, // 0x0000 ADC $0004
+            0x00, //             0x0003 HLT
+            0x01, //             0x0004 DB #01
+        ];
+        m.load(0, &program).unwrap();
+        m.run();
+
+        assert_eq!(m.reg("AC"), 0x01);
+        assert_eq!(m.reg("SR") & CARRY, 0x00);
+    }
+
+    #[test]
+    fn adc_absolute_adds_value_in_address_to_register_with_overflow() {
+        let mut m = MOS6502::new();
+
+        m.reg_set("AC", 0x01);
+
+        let program = [
+            0x6D, 0x04, 0x00, // 0x0000 ADC $0004
+            0x00, //             0x0003 HLT
+            0xFF, //             0x0004 DB #FF
+        ];
+        m.load(0, &program).unwrap();
+        m.run();
+
+        assert_eq!(m.reg("AC"), 0x00);
+        assert_eq!(m.reg("SR") & CARRY, 0x01);
+    }
+
+    #[test]
+    fn sta_absolute_stores_accumulator_at_address() {
+        let mut m = MOS6502::new();
+
+        m.reg_set("AC", 0x42);
+
+        let program = [
+            0x8D, 0x04, 0x00, // 0x0000 STA $0004
+            0x00, //             0x0003 HLT
+        ];
+        m.load(0, &program).unwrap();
+        m.run();
+
+        assert_eq!(m.get8(0x0004), 0x42);
     }
 }
