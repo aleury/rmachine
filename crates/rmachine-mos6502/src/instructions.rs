@@ -2,6 +2,24 @@ use rmachine_core::{machine::Mode, prelude::*};
 
 use crate::flags::{CARRY, DECIMAL};
 
+/// Performs ADC (Add with Carry) operation.
+/// Adds the operand and carry flag to the accumulator, updating the carry flag on overflow.
+fn adc(m: &mut Machine, operand: u8) {
+    let carry = m.reg("SR") & CARRY;
+    let reg = m.reg_mut("AC");
+
+    let (result, overflow) = reg.overflowing_add(operand);
+    let (result, overflow2) = result.overflowing_add(carry);
+    *reg = result;
+
+    let status = m.reg_mut("SR");
+    if overflow || overflow2 {
+        *status |= CARRY;
+    } else {
+        *status &= !CARRY;
+    }
+}
+
 pub const INSTRUCTIONS: &[Instruction] = &[
     Instruction {
         mnemonic: "CLC",
@@ -21,20 +39,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let carry = m.reg("SR") & CARRY;
             let operand = m.fetch();
-            let reg = m.reg_mut("AC");
-
-            let (result, overflow) = reg.overflowing_add(operand);
-            let (result, overflow2) = result.overflowing_add(carry);
-            *reg = result;
-
-            let status = m.reg_mut("SR");
-            if overflow || overflow2 {
-                *status |= CARRY;
-            } else {
-                *status &= !CARRY;
-            }
+            adc(m, operand);
         },
     },
     Instruction {
@@ -44,21 +50,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let carry = m.reg("SR") & CARRY;
             let addr = m.get16(m.pc());
             let operand = m.get8(addr);
-            let reg = m.reg_mut("AC");
-
-            let (result, overflow) = reg.overflowing_add(operand);
-            let (result, overflow2) = result.overflowing_add(carry);
-            *reg = result;
-
-            let status = m.reg_mut("SR");
-            if overflow || overflow2 {
-                *status |= CARRY;
-            } else {
-                *status &= !CARRY;
-            }
+            adc(m, operand);
         },
     },
     Instruction {
