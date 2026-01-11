@@ -22,6 +22,16 @@ fn adc(m: &mut Machine, operand: u8) {
 
 pub const INSTRUCTIONS: &[Instruction] = &[
     Instruction {
+        mnemonic: "BRK",
+        mode: Mode::Implied,
+        opcode: 0x00,
+        bytes: 1,
+        cycles: 7,
+        execute: |m| {
+            m.exception = Some("break".into());
+        },
+    },
+    Instruction {
         mnemonic: "ADC",
         mode: Mode::Immediate,
         opcode: 0x69,

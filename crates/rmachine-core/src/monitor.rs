@@ -1,7 +1,7 @@
 use std::io::{Write, stdin, stdout};
 
 use crate::Machine;
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 pub struct Monitor<'a> {
     pub debug: bool,
@@ -26,8 +26,7 @@ impl<'a> Monitor<'a> {
 
         loop {
             if !self.debug {
-                self.machine.run();
-                break;
+                self.machine.run()?;
             }
 
             println!("{}", self.machine);
@@ -40,10 +39,9 @@ impl<'a> Monitor<'a> {
             match input.trim_end() {
                 "q" => break,
                 "n" | "" => {
-                    self.machine.step().or_else(|e| {
-                        println!("{}", self.machine);
-                        bail!(e)
-                    })?;
+                    if let Err(err) = self.machine.step() {
+                        println!("{err}");
+                    }
                 }
                 "m" => {
                     for row in 0..8 {
@@ -64,7 +62,11 @@ impl<'a> Monitor<'a> {
                         println!("|");
                     }
                 }
-                "r" => self.machine.run(),
+                "r" => {
+                    if let Err(err) = self.machine.run() {
+                        println!("{err}");
+                    }
+                }
                 "?" | "h" | "help" => println!("{HELP}\n"),
                 cmd => println!("Unknown command '{cmd}' (type '?' for help)"),
             }
