@@ -2,6 +2,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Write;
+use std::panic;
+use std::panic::AssertUnwindSafe;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -28,7 +30,7 @@ pub struct Instruction {
 #[derive(Debug)]
 pub struct Machine {
     memory: Vec<u8>,
-    pc: u16,
+    pub pc: u16,
     pub registers: HashMap<&'static str, u8>,
     register_list: &'static [&'static str],
     instructions: HashMap<u8, &'static Instruction>,
@@ -88,6 +90,9 @@ impl MachineBuilder {
 }
 
 impl Machine {
+    /// Clears the machine registers and sets PC = 0.
+    ///
+    /// The contents of memory are not affected.
     pub fn reset(&mut self) {
         self.pc = 0;
         for register in self.registers.values_mut() {
@@ -134,6 +139,7 @@ impl Machine {
     /// If the program will not fit in the machine's memory.
     pub fn run_program(&mut self, program: &[u8]) {
         self.load(0, program).expect("program too big");
+        self.pc = 0;
         self.run().unwrap_err();
     }
 
@@ -153,7 +159,8 @@ impl Machine {
     /// # Panics
     ///
     /// Panics if the named register does not exist.
-    pub fn reg(&mut self, reg_name: &str) -> u8 {
+    #[must_use]
+    pub fn reg(&self, reg_name: &str) -> u8 {
         self.registers
             .get(reg_name)
             .copied()
@@ -178,11 +185,29 @@ impl Machine {
     /// # Panics
     ///
     /// Panics if the named register does not exist.
-    pub fn reg_set(&mut self, reg_name: &'static str, value: u8) {
+    pub fn set_reg(&mut self, reg_name: &'static str, value: u8) {
         self.registers
             .insert(reg_name, value)
             .ok_or_else(|| format!("undefined register '{reg_name}'"))
             .unwrap();
+    }
+
+    /// Clears the specified bit of register `reg_name`.
+    pub fn clear_bit(&mut self, reg_name: &'static str, bit: u8) {
+        let reg = self.reg_mut(reg_name);
+        *reg &= !bit;
+    }
+
+    /// Sets the specified bit of register `reg_name`.
+    pub fn set_bit(&mut self, reg_name: &'static str, bit: u8) {
+        let reg = self.reg_mut(reg_name);
+        *reg |= bit;
+    }
+
+    /// Returns true if the specified bit of `reg_name` is set.
+    #[must_use]
+    pub fn test_bit(&self, reg_name: &'static str, bit: u8) -> bool {
+        self.reg(reg_name) & bit != 0
     }
 
     /// Fetch the next byte from memory.
@@ -246,6 +271,26 @@ impl Machine {
         } else {
             self.cycles = new_cycles;
             self.timer_ns = self.timer_ns.saturating_add(delay as usize);
+        }
+    }
+
+    /// Runs all instruction self-tests.
+    ///
+    /// The machine is reset before each test (clearing the registers, but not
+    /// the memory).
+    ///
+    /// # Panics
+    ///
+    /// If a test fails.
+    pub fn self_test(&mut self) {
+        let opcodes: Vec<_> = self.instructions.keys().copied().collect();
+        for opcode in opcodes {
+            self.reset();
+            let instr = &self.instructions[&opcode].clone();
+            if panic::catch_unwind(AssertUnwindSafe(|| (instr.test)(self))).is_err() {
+                println!("{self}");
+                panic!("opcode {:#04X} failed self-test", instr.opcode);
+            }
         }
     }
 
@@ -317,8 +362,6 @@ impl Display for Machine {
 
 #[cfg(test)]
 mod tests {
-    use std::panic::{self, AssertUnwindSafe};
-
     use super::*;
 
     pub const INSTRUCTIONS: &[Instruction] = &[
@@ -359,7 +402,7 @@ mod tests {
             cycles: 2,
             execute: |m| {
                 let value = m.fetch();
-                m.reg_set("A", value);
+                m.set_reg("A", value);
             },
             test: |m| {
                 println!("in LDA");
@@ -384,16 +427,8 @@ mod tests {
     }
 
     #[test]
-    fn instruction_self_tests_pass() {
-        let mut m = new_tiny_machine();
-        for instruction in INSTRUCTIONS {
-            m.reset();
-            assert!(
-                panic::catch_unwind(AssertUnwindSafe(|| (instruction.test)(&mut m))).is_ok(),
-                "opcode {:#04X} failed self-test",
-                instruction.opcode
-            );
-        }
+    fn machine_self_tests_pass() {
+        new_tiny_machine().self_test();
     }
 
     #[test]
@@ -449,5 +484,16 @@ mod tests {
 
         // Should not panic, and reading out of bounds returns 0
         assert_eq!(machine.get8(2000), 0x00);
+    }
+
+    #[test]
+    fn bit_methods_work_correctly() {
+        const BIT_0: u8 = 0b0000_0001;
+        let mut m = new_tiny_machine();
+        assert!(!m.test_bit("A", BIT_0), "0 bit misreported as 1");
+        m.set_bit("A", BIT_0);
+        assert!(m.test_bit("A", BIT_0), "bit not set");
+        m.clear_bit("A", BIT_0);
+        assert!(!m.test_bit("A", BIT_0), "bit not cleared");
     }
 }
