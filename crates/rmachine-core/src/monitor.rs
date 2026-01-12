@@ -40,7 +40,7 @@ impl<'a> Monitor<'a> {
                 "q" => break,
                 "n" | "" => {
                     if let Err(err) = self.machine.step() {
-                        println!("{err}");
+                        eprintln!("{err}");
                     }
                 }
                 "m" => {
@@ -64,7 +64,7 @@ impl<'a> Monitor<'a> {
                 }
                 "r" => {
                     if let Err(err) = self.machine.run() {
-                        println!("{err}");
+                        eprintln!("{err}");
                     }
                 }
                 "?" | "h" | "help" => println!("{HELP}\n"),

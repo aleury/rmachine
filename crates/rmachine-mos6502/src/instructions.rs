@@ -3,41 +3,25 @@ use rmachine_core::{machine::Mode, prelude::*};
 use crate::flags::{CARRY, DECIMAL};
 
 /// Performs ADC (Add with Carry) operation.
-/// Adds the operand and carry flag to the accumulator, updating the carry flag on overflow.
+///
+/// Adds the operand and carry flag to the accumulator, updating the carry flag.
 fn adc(m: &mut Machine, operand: u8) {
     let carry = m.reg("SR") & CARRY;
-    let reg = m.reg_mut("AC");
+    let reg = m.reg("AC");
 
     let (result, overflow) = reg.overflowing_add(operand);
     let (result, overflow2) = result.overflowing_add(carry);
 
-    *reg = result;
+    m.set_reg("AC", result);
 
-    let status = m.reg_mut("SR");
     if overflow || overflow2 {
-        *status |= CARRY;
+        m.set_bit("SR", CARRY);
     } else {
-        *status &= !CARRY;
+        m.clear_bit("SR", CARRY);
     }
 }
 
 pub const INSTRUCTIONS: &[Instruction] = &[
-    Instruction {
-        mnemonic: "BRK",
-        mode: Mode::Implied,
-        opcode: 0x00,
-        bytes: 1,
-        cycles: 7,
-        execute: |m| {
-            m.exception = Some("break".into());
-        },
-        test: |m| {
-            m.run_program(&[
-                0x00, // 0x0000 BRK
-            ]);
-            assert_eq!(m.pc, 0x0001, "wrong PC");
-        },
-    },
     Instruction {
         mnemonic: "ADC",
         mode: Mode::Immediate,
@@ -45,8 +29,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let operand = m.fetch();
-            adc(m, operand);
+            let op = m.fetch8();
+            adc(m, op);
         },
         test: |m| {
             m.run_program(&[
@@ -57,7 +41,6 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
             assert!(!m.test_bit("SR", CARRY), "carry set");
-            println!("{m}");
             m.run_program(&[
                 //             ;A=FF, C=0
                 0x69, 0x01, // 0x0000 ADC #01
@@ -74,11 +57,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 3,
         cycles: 4,
         execute: |m| {
-            let addr = m.get16(m.pc());
-            m.advance(2);
-
-            let operand = m.get8(addr);
-            adc(m, operand);
+            let addr = m.fetch16();
+            let op = m.get8(addr);
+            adc(m, op);
         },
         test: |m| {
             m.run_program(&[
@@ -101,19 +82,33 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "BRK",
+        mode: Mode::Implied,
+        opcode: 0x00,
+        bytes: 1,
+        cycles: 7,
+        execute: |m| {
+            m.exception = Some("break".into());
+        },
+        test: |m| {
+            m.run_program(&[
+                0x00, // 0x0000 BRK
+            ]);
+            assert_eq!(m.pc, 0x0001, "wrong PC");
+        },
+    },
+    Instruction {
         mnemonic: "CLC",
         mode: Mode::Implied,
         opcode: 0x18,
         bytes: 1,
         cycles: 2,
-        execute: |m| {
-            let status = m.reg_mut("SR");
-            *status &= !CARRY;
-        },
+        execute: |m| m.clear_bit("SR", CARRY),
         test: |m| {
             m.set_bit("SR", CARRY);
             m.run_program(&[
                 0x18, // 0x0000 CLC
+                0x00, // 0x0001 BRK
             ]);
             assert!(!m.test_bit("SR", CARRY), "carry set");
         },
@@ -124,13 +119,12 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         opcode: 0xD8,
         bytes: 1,
         cycles: 2,
-        execute: |m| {
-            m.clear_bit("SR", DECIMAL);
-        },
+        execute: |m| m.clear_bit("SR", DECIMAL),
         test: |m| {
             m.set_bit("SR", DECIMAL);
             m.run_program(&[
                 0xD8, // 0x0000 CLD
+                0x00, // 0x0001 BRK
             ]);
             assert!(!m.test_bit("SR", DECIMAL), "decimal mode set");
         },
@@ -142,12 +136,13 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 1,
         cycles: 2,
         execute: |m| {
-            let reg = m.reg_mut("XR");
-            *reg = reg.wrapping_add(1);
+            let result = m.reg("XR").wrapping_add(1);
+            m.set_reg("XR", result);
         },
         test: |m| {
             m.run_program(&[
                 0xE8, // 0x0000 INX
+                0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.reg("XR"), 0x01, "wrong XR");
         },
@@ -159,12 +154,13 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 1,
         cycles: 2,
         execute: |m| {
-            let reg = m.reg_mut("YR");
-            *reg = reg.wrapping_add(1);
+            let result = m.reg("YR").wrapping_add(1);
+            m.set_reg("YR", result);
         },
         test: |m| {
             m.run_program(&[
                 0xC8, // 0x0000 INY
+                0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.reg("YR"), 0x01, "wrong YR");
         },
@@ -176,12 +172,13 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let value = m.fetch();
-            m.set_reg("AC", value);
+            let op = m.fetch8();
+            m.set_reg("AC", op);
         },
         test: |m| {
             m.run_program(&[
                 0xA9, 0xFF, // 0x0000 LDA #FF
+                0x00, //       0x0002 BRK
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
         },
@@ -193,11 +190,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 3,
         cycles: 2,
         execute: |m| {
-            let addr = m.get16(m.pc());
-            m.advance(2);
-
-            let value = m.get8(addr);
-            m.set_reg("AC", value);
+            let addr = m.fetch16();
+            let op = m.get8(addr);
+            m.set_reg("AC", op);
         },
         test: |m| {
             m.run_program(&[
@@ -215,11 +210,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 3,
         cycles: 4,
         execute: |m| {
-            let addr = m.get16(m.pc());
-            m.advance(2);
-
-            let value = m.reg("AC");
-            m.set8(addr, value);
+            let addr = m.fetch16();
+            let op = m.reg("AC");
+            m.set8(addr, op);
         },
         test: |m| {
             m.run_program(&[

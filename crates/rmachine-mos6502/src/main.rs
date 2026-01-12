@@ -18,7 +18,7 @@ fn main() -> Result<()> {
     let mut m = MOS6502::new();
 
     let program = [
-        0xFF, //             0x0000 CLC
+        0x18, //             0x0000 CLC
         0xD8, //             0x0001 CLD
         0xAD, 0x15, 0x00, // 0x0002 LDA $0015 (adr1)
         0x6D, 0x17, 0x00, // 0x0005 ADC $0017 (adr2)
