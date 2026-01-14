@@ -12,3 +12,6 @@ categories.workspace = true
 
 [dependencies]
 anyhow = "1.0"
+
+[lints]
+workspace = true
