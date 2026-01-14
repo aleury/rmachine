@@ -33,7 +33,7 @@ impl Default for MOS6502 {
                 memory_size: 1024,
                 registers: &["SR", "AC", "XR", "YR", "SP"],
                 instructions: INSTRUCTIONS,
-                frequency_mhz: 2.0,
+                frequency_hz: 2_000_000,
             }
             .build(),
         )

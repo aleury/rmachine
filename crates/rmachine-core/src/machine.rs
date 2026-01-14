@@ -2,12 +2,14 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Write;
+use std::ops::Div;
 use std::panic;
 use std::panic::AssertUnwindSafe;
 use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow, bail};
+use num_traits::ToPrimitive;
 
 #[derive(Debug, Clone)]
 pub enum Mode {
@@ -34,9 +36,9 @@ pub struct Machine {
     pub registers: HashMap<&'static str, u8>,
     register_list: &'static [&'static str],
     instructions: HashMap<u8, &'static Instruction>,
-    cycles: u32,
-    cycle_time_ns: u32,
-    timer_ns: usize,
+    cycles: u64,
+    cycle_time_ns: u64,
+    timer_ns: u64,
     pub exception: Option<String>,
 }
 
@@ -45,7 +47,7 @@ pub struct MachineBuilder {
     pub memory_size: usize,
     pub registers: &'static [&'static str],
     pub instructions: &'static [Instruction],
-    pub frequency_mhz: f32,
+    pub frequency_hz: u64,
 }
 
 impl MachineBuilder {
@@ -56,7 +58,6 @@ impl MachineBuilder {
     /// Will panic if an instruction with the same opcode already exists.
     #[must_use]
     pub fn build(self) -> Machine {
-        assert!(self.frequency_mhz.is_sign_positive());
         Machine {
             memory: vec![0; self.memory_size],
             registers: {
@@ -79,8 +80,9 @@ impl MachineBuilder {
                 }
                 instructions
             },
-            #[expect(clippy::cast_sign_loss, reason = "previously asserted positive")]
-            cycle_time_ns: (1000.0 / self.frequency_mhz) as u32,
+            cycle_time_ns: 1_000_000_000_u64
+                .checked_div(self.frequency_hz)
+                .expect("frequency must be non-zero"),
             pc: 0,
             cycles: 0,
             timer_ns: 0,
@@ -235,7 +237,7 @@ impl Machine {
     /// Reads the byte at the given address from memory.
     #[must_use]
     pub fn get8(&self, addr: u16) -> u8 {
-        self.memory.get(addr as usize).copied().unwrap_or(0)
+        self.memory.get(usize::from(addr)).copied().unwrap_or(0)
     }
 
     /// Reads the word at the given address from memory.
@@ -247,7 +249,7 @@ impl Machine {
 
     /// Writes a byte to memory at the given address.
     pub fn set8(&mut self, addr: u16, value: u8) {
-        if let Some(byte) = self.memory.get_mut(addr as usize) {
+        if let Some(byte) = self.memory.get_mut(usize::from(addr)) {
             *byte = value;
         }
     }
@@ -272,16 +274,16 @@ impl Machine {
     /// Also updates the cycle counter and cycle timer, used to report the
     /// actual speed achieved (by [`Self::speed_mhz`]).
     pub fn wait_cycles(&mut self, cycles: u8) {
-        let cycles = u32::from(cycles);
+        let cycles = u64::from(cycles);
         let delay = cycles * self.cycle_time_ns;
-        sleep(Duration::from_nanos(u64::from(delay)));
+        sleep(Duration::from_nanos(delay));
         let (new_cycles, overflow) = self.cycles.overflowing_add(cycles);
         if overflow {
             self.cycles = 0;
             self.timer_ns = 0;
         } else {
             self.cycles = new_cycles;
-            self.timer_ns = self.timer_ns.saturating_add(delay as usize);
+            self.timer_ns = self.timer_ns.saturating_add(delay);
         }
     }
 
@@ -312,13 +314,25 @@ impl Machine {
     ///
     /// Emulator overhead is not accounted for, and is assumed to be negligible
     /// relative to the rated clock frequency.
+    ///
+    /// # Panics
+    ///
+    /// If either `self.cycle_time_ns` or `self.timer_ns` are unrepresentable as
+    /// `f64`.
     #[must_use]
-    #[expect(clippy::cast_precision_loss, reason = "approximate speed is fine")]
-    pub fn speed_mhz(&self) -> f32 {
+    pub fn speed_mhz(&self) -> f64 {
+        fn safe_f64(x: u64) -> f64 {
+            x.to_f64().expect(
+                "u64 values are always representable as f64; loss of precision is okay here",
+            )
+        }
+        let cycle_time = safe_f64(self.cycle_time_ns);
         if self.cycles == 0 {
-            1000.0 / self.cycle_time_ns as f32
+            1_000_f64.div(cycle_time)
         } else {
-            self.cycles as f32 / self.timer_ns as f32 * 1000.0
+            let cycles = safe_f64(self.cycles);
+            let elapsed_sec = safe_f64(self.timer_ns).div(1000.0);
+            cycles.div(elapsed_sec)
         }
     }
 
@@ -329,8 +343,8 @@ impl Machine {
     /// May return an error if unable to disassemble next instruction.
     #[must_use]
     pub fn disassemble_next(&self) -> Option<String> {
-        let opcode = self.memory.get(self.pc as usize)?;
-        let instruction = self.instructions.get(opcode)?;
+        let opcode = self.get8(self.pc);
+        let instruction = self.instructions.get(&opcode)?;
         let mut disassembly = String::from(instruction.mnemonic);
         match instruction.bytes {
             1 => {}
@@ -430,7 +444,7 @@ mod tests {
             memory_size: 1024,
             registers: &["A", "X", "Y"],
             instructions: INSTRUCTIONS,
-            frequency_mhz: 1.0,
+            frequency_hz: 1_000_000,
         }
         .build()
     }
@@ -498,5 +512,17 @@ mod tests {
         assert!(m.test_bit("A", BIT_0), "bit not set");
         m.clear_bit("A", BIT_0);
         assert!(!m.test_bit("A", BIT_0), "bit not cleared");
+    }
+
+    #[test]
+    fn speed_mhz_fn_calculates_speed_correctly() {
+        fn close_enough(x: f64, y: f64) {
+            assert!((x - y).abs() < 0.1, "want {y:.2}, got {x:.2}");
+        }
+        let mut m = new_tiny_machine();
+        close_enough(m.speed_mhz(), 1.0);
+        m.cycles = 1_000_000;
+        m.timer_ns = 1_000_000_000;
+        close_enough(m.speed_mhz(), 1.0);
     }
 }

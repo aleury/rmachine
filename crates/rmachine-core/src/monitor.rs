@@ -54,7 +54,7 @@ impl<'a> Monitor<'a> {
                         for col in 0..16 {
                             let byte = self.machine.get8(addr + col);
                             if byte.is_ascii_graphic() || byte == b' ' {
-                                print!("{}", byte as char);
+                                print!("{}", char::from(byte));
                             } else {
                                 print!(".");
                             }
