@@ -20,3 +20,4 @@ categories = ["emulators", "command-line-utilities"]
 
 [workspace.lints.clippy]
 as_conversions = "deny"
+arithmetic_side_effects = "deny"

@@ -21,6 +21,10 @@ impl<'a> Monitor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the machine encounters an error.
+    ///
+    /// # Panics
+    ///
+    /// If the memory dump hits an out-of-range address.
     pub fn run(&mut self) -> Result<()> {
         let mut input = String::new();
 
@@ -44,20 +48,25 @@ impl<'a> Monitor<'a> {
                     }
                 }
                 "m" => {
-                    for row in 0..8 {
-                        let addr = row * 16;
-                        print!("{addr:04X}:");
+                    for row in 0..8_u16 {
+                        let base: u16 = row.checked_mul(16).expect("address out of range");
+                        print!("{base:04X}:");
                         for col in 0..16 {
-                            print!(" {:02X}", self.machine.get8(addr + col));
+                            let addr = base.checked_add(col).expect("address out of range");
+                            print!(" {:02X}", self.machine.get8(addr));
                         }
                         print!("  |");
                         for col in 0..16 {
-                            let byte = self.machine.get8(addr + col);
-                            if byte.is_ascii_graphic() || byte == b' ' {
-                                print!("{}", char::from(byte));
-                            } else {
-                                print!(".");
-                            }
+                            let addr = base.checked_add(col).expect("address out of range");
+                            let byte = self.machine.get8(addr);
+                            print!(
+                                "{}",
+                                if byte.is_ascii_graphic() || byte == b' ' {
+                                    char::from(byte)
+                                } else {
+                                    '.'
+                                }
+                            );
                         }
                         println!("|");
                     }

@@ -8,6 +8,7 @@ use std::panic::AssertUnwindSafe;
 use std::thread::sleep;
 use std::time::Duration;
 
+use anyhow::Context;
 use anyhow::{Result, anyhow, bail};
 use num_traits::ToPrimitive;
 
@@ -241,9 +242,11 @@ impl Machine {
     }
 
     /// Reads the word at the given address from memory.
+    ///
+    /// No alignment requirements apply.
     #[must_use]
     pub fn get16(&self, addr: u16) -> u16 {
-        let le_bytes = [self.get8(addr), self.get8(addr + 1)];
+        let le_bytes = [self.get8(addr), self.get8(addr.wrapping_add(1))];
         u16::from_le_bytes(le_bytes)
     }
 
@@ -259,10 +262,14 @@ impl Machine {
     /// # Errors
     ///
     /// Returns an error if the address is out of bounds.
-    pub fn load(&mut self, addr: usize, program: &[u8]) -> Result<()> {
+    pub fn load(&mut self, addr: u16, program: &[u8]) -> Result<()> {
+        let start = usize::from(addr);
+        let end = start
+            .checked_add(program.len())
+            .context("program too big")?;
         let slice = self
             .memory
-            .get_mut(addr..addr + program.len())
+            .get_mut(start..end)
             .ok_or_else(|| anyhow!("memory out of bounds: {addr:#x}"))?;
         slice.copy_from_slice(program);
         Ok(())
@@ -273,9 +280,16 @@ impl Machine {
     ///
     /// Also updates the cycle counter and cycle timer, used to report the
     /// actual speed achieved (by [`Self::speed_mhz`]).
+    ///
+    /// # Panics
+    ///
+    /// If the calculated sleep would be more than [`u64::MAX`] nanoseconds
+    /// (around 600 years).
     pub fn wait_cycles(&mut self, cycles: u8) {
         let cycles = u64::from(cycles);
-        let delay = cycles * self.cycle_time_ns;
+        let delay = cycles
+            .checked_mul(self.cycle_time_ns)
+            .expect("unreasonably long delay");
         sleep(Duration::from_nanos(delay));
         let (new_cycles, overflow) = self.cycles.overflowing_add(cycles);
         if overflow {
