@@ -2,9 +2,11 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Write;
+use std::fs;
 use std::ops::Div;
 use std::panic;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -262,6 +264,17 @@ impl Machine {
             .get_mut(start..end)
             .ok_or_else(|| anyhow!("memory out of bounds: {addr:#x}"))?;
         slice.copy_from_slice(program);
+        Ok(())
+    }
+
+    /// Loads binary file at `path` at the given address.
+    ///
+    /// # Errors
+    ///
+    /// If reading the file fails.
+    pub fn load_bin(&mut self, addr: u16, path: impl AsRef<Path>) -> Result<()> {
+        let data = fs::read(path)?;
+        self.load(addr, &data)?;
         Ok(())
     }
 
@@ -558,5 +571,13 @@ mod tests {
             0x00, //             0x0003 BRK
         ]);
         assert_eq!(m.pc, 0x0000, "wrong PC");
+    }
+
+    #[test]
+    fn load_bin_fn_loads_bin_file() {
+        let mut m = new_tiny_machine();
+        m.load_bin(0, "tests/lda-ff.bin").unwrap();
+        m.run();
+        assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
     }
 }
