@@ -30,7 +30,7 @@ impl<'a> Monitor<'a> {
 
         loop {
             if !self.debug {
-                self.machine.run()?;
+                self.machine.run();
             }
 
             println!("{}", self.machine);
@@ -42,11 +42,7 @@ impl<'a> Monitor<'a> {
             }
             match input.trim_end() {
                 "q" => break,
-                "n" | "" => {
-                    if let Err(err) = self.machine.step() {
-                        eprintln!("{err}");
-                    }
-                }
+                "n" | "" => self.machine.step(),
                 "m" => {
                     for row in 0..8_u16 {
                         let base: u16 = row.checked_mul(16).expect("address out of range");
@@ -71,11 +67,7 @@ impl<'a> Monitor<'a> {
                         println!("|");
                     }
                 }
-                "r" => {
-                    if let Err(err) = self.machine.run() {
-                        eprintln!("{err}");
-                    }
-                }
+                "r" => self.machine.run(),
                 "?" | "h" | "help" => println!("{HELP}\n"),
                 cmd => println!("Unknown command '{cmd}' (type '?' for help)"),
             }
