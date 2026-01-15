@@ -11,6 +11,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::Context;
+use anyhow::bail;
 use anyhow::{Result, anyhow};
 use num_traits::ToPrimitive;
 
@@ -258,16 +259,22 @@ impl Machine {
         let start = usize::from(addr);
         let end = start
             .checked_add(program.len())
-            .context("program too big")?;
+            .context("program too big")?
+            .checked_sub(1)
+            .context("program empty")?;
+        let max = self.memory.len().checked_sub(1).context("zero memory")?;
+        if end > max {
+            bail!("end address beyond memory ({end:#X} against {max:#X})")
+        }
         let slice = self
             .memory
-            .get_mut(start..end)
-            .ok_or_else(|| anyhow!("memory out of bounds: {addr:#x}"))?;
+            .get_mut(start..=end)
+            .ok_or_else(|| anyhow!("invalid memory range: {start:#X}-{end:#X} (max {max:#X}"))?;
         slice.copy_from_slice(program);
         Ok(())
     }
 
-    /// Loads binary file at `path` at the given address.
+    /// Loads binary file `path` at address `addr` and sets PC to `addr`.
     ///
     /// # Errors
     ///
@@ -275,6 +282,7 @@ impl Machine {
     pub fn load_bin(&mut self, addr: u16, path: impl AsRef<Path>) -> Result<()> {
         let data = fs::read(path)?;
         self.load(addr, &data)?;
+        self.pc = addr;
         Ok(())
     }
 

@@ -13,6 +13,7 @@ categories.workspace = true
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
+clap-num = "1.2.0"
 rmachine-core = { path = "../rmachine-core" }
 
 [lints]
