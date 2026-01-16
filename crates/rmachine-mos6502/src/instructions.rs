@@ -1,4 +1,4 @@
-use rmachine_core::{machine::Mode, prelude::*};
+use rmachine_core::{exception::Exception, machine::Mode, prelude::*};
 
 use crate::flags::{CARRY, DECIMAL};
 
@@ -88,7 +88,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 1,
         cycles: 7,
         execute: |m| {
-            m.exception = Some("break".into());
+            m.trap(Exception::Break);
         },
         test: |m| {
             m.run_program(&[
@@ -163,6 +163,22 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.reg("YR"), 0x01, "wrong YR");
+        },
+    },
+    Instruction {
+        mnemonic: "JMP",
+        mode: Mode::Absolute,
+        opcode: 0x4C,
+        bytes: 3,
+        cycles: 3,
+        execute: |m| m.pc = m.fetch16(),
+        test: |m| {
+            m.run_program(&[
+                0x4C, 0x04, 0x00, // 0x0000 JMP $0004
+                0x00, //             0x0003 BRK
+                0x00, //             0x0004 BRK
+            ]);
+            assert_eq!(m.pc, 0x0005, "wrong PC");
         },
     },
     Instruction {

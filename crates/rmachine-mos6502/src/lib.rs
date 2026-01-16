@@ -30,7 +30,7 @@ impl Default for MOS6502 {
         use instructions::INSTRUCTIONS;
         Self(
             MachineBuilder {
-                memory_size: 1024,
+                memory_size: 0x10_000, // 64KiB
                 registers: &["SR", "AC", "XR", "YR", "SP"],
                 instructions: INSTRUCTIONS,
                 frequency_hz: 2_000_000,
