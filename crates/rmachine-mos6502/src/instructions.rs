@@ -167,7 +167,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
     },
     Instruction {
         mnemonic: "JMP",
-        mode: Mode::Immediate,
+        mode: Mode::Absolute,
         opcode: 0x4C,
         bytes: 3,
         cycles: 3,
