@@ -435,7 +435,7 @@ mod tests {
         },
         Instruction {
             mnemonic: "JMP",
-            mode: Mode::Immediate,
+            mode: Mode::Absolute,
             opcode: 0x04,
             bytes: 3,
             cycles: 2,
