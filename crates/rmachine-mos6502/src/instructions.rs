@@ -193,8 +193,28 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
         test: |m| {
             m.run_program(&[
-                0xA9, 0xFF, // 0x0000 LDA #FF
+                0xA9, 0xFF, // 0x0000 LDA #$FF
                 0x00, //       0x0002 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+        },
+    },
+    Instruction {
+        mnemonic: "LDA",
+        mode: Mode::ZeroPage,
+        opcode: 0xA5,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = m.fetch8();
+            let op = m.get8(u16::from(addr));
+            m.set_reg("AC", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA5, 0x03, // 0x0000 LDA $03
+                0x00, //       0x0002 BRK
+                0xFF, //       0x0003 DB #$FF
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
         },
@@ -214,9 +234,125 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             m.run_program(&[
                 0xAD, 0x04, 0x00, // 0x0000 LDA $0004
                 0x00, //             0x0003 BRK
-                0xFF, //             0x0004 DB #FF
+                0xFF, //             0x0004 DB #$FF
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+        },
+    },
+    Instruction {
+        mnemonic: "LDX",
+        mode: Mode::Immediate,
+        opcode: 0xA2,
+        bytes: 2,
+        cycles: 2,
+        execute: |m| {
+            let op = m.fetch8();
+            m.set_reg("XR", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA2, 0x2a, // 0x0000 LDX #$2a
+                0x00, //       0x0002 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x2a, "wrong XR");
+        },
+    },
+    Instruction {
+        mnemonic: "LDX",
+        mode: Mode::ZeroPage,
+        opcode: 0xA6,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = m.fetch8();
+            let op = m.get8(u16::from(addr));
+            m.set_reg("XR", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA6, 0x03, // 0x0000 LDX $03
+                0x00, //       0x0002 BRK
+                0x2a, //       0x0003 DB #$2a
+            ]);
+            assert_eq!(m.reg("XR"), 0x2a, "wrong XR");
+        },
+    },
+    Instruction {
+        mnemonic: "LDX",
+        mode: Mode::Absolute,
+        opcode: 0xAE,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let addr = m.fetch16();
+            let op = m.get8(addr);
+            m.set_reg("XR", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xAE, 0x04, 0x00, // 0x0000 LDX $0004
+                0x00, //             0x0003 BRK
+                0x2a, //             0x0004 DB #$2a
+            ]);
+            assert_eq!(m.reg("XR"), 0x2a, "wrong XR");
+        },
+    },
+    Instruction {
+        mnemonic: "LDY",
+        mode: Mode::Immediate,
+        opcode: 0xA0,
+        bytes: 2,
+        cycles: 2,
+        execute: |m| {
+            let op = m.fetch8();
+            m.set_reg("YR", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA0, 0x2a, // 0x0000 LDY #$2a
+                0x00, //       0x0002 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0x2a, "wrong YR");
+        },
+    },
+    Instruction {
+        mnemonic: "LDY",
+        mode: Mode::ZeroPage,
+        opcode: 0xA4,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = m.fetch8();
+            let op = m.get8(u16::from(addr));
+            m.set_reg("YR", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA4, 0x03, // 0x0000 LDY $03
+                0x00, //       0x0002 BRK
+                0x2a, //       0x0003 DB #$2a
+            ]);
+            assert_eq!(m.reg("YR"), 0x2a, "wrong YR");
+        },
+    },
+    Instruction {
+        mnemonic: "LDY",
+        mode: Mode::Absolute,
+        opcode: 0xAC,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let addr = m.fetch16();
+            let op = m.get8(addr);
+            m.set_reg("YR", op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xAC, 0x04, 0x00, // 0x0000 LDY $0004
+                0x00, //             0x0003 BRK
+                0x2a, //             0x0004 DB #$2a
+            ]);
+            assert_eq!(m.reg("YR"), 0x2a, "wrong YR");
         },
     },
     Instruction {
