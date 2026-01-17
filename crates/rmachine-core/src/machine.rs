@@ -23,6 +23,7 @@ pub enum Mode {
     Immediate,
     ZeroPage,
     Absolute,
+    Relative,
 }
 
 #[derive(Debug, Clone)]

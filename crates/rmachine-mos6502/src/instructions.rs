@@ -1,6 +1,6 @@
 use rmachine_core::{exception::Exception, machine::Mode, prelude::*};
 
-use crate::flags::{CARRY, DECIMAL};
+use crate::flags::{CARRY, DECIMAL, ZERO};
 
 /// Performs ADC (Add with Carry) operation.
 ///
@@ -95,6 +95,46 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0x00, // 0x0000 BRK
             ]);
             assert_eq!(m.pc, 0x0001, "wrong PC");
+        },
+    },
+    Instruction {
+        mnemonic: "BNE",
+        mode: Mode::Relative,
+        opcode: 0xD0,
+        bytes: 2,
+        cycles: 2,
+        execute: |m| {
+            let offset = m.fetch8();
+            let signed_offset = offset.cast_signed();
+            if !m.test_bit("SR", ZERO) {
+                m.pc = m.pc.wrapping_add_signed(i16::from(signed_offset));
+            }
+        },
+        test: |m| {
+            // Test branch forward
+            m.clear_bit("SR", ZERO);
+            m.set_bit("SR", CARRY);
+            m.run_program(&[
+                0xD0, 0x01, // 0x0000 BNE $01
+                0x00, //       0x0002 BRK (skipped)
+                0x18, //       0x0003 CLC
+                0x00, //       0x0004 BRK
+            ]);
+            assert_eq!(m.pc(), 0x0005, "wrong PC");
+            assert!(!m.test_bit("SR", CARRY), "carry not cleared");
+
+            // Test branch backward
+            m.clear_bit("SR", ZERO);
+            m.set_bit("SR", CARRY);
+            m.run_program(&[
+                0x4C, 0x05, 0x00, // $0000 JMP $0005
+                0x18, //             $0003 CLC
+                0x00, //             $0004 BRK
+                0xD0, 0xFC, //       $0005 BNE $FC (branch to $0003, -4 back from pc := $0007)
+                0x00, //             $0007 BRK (skipped)
+            ]);
+            assert_eq!(m.pc(), 0x0005, "wrong PC");
+            assert!(!m.test_bit("SR", CARRY), "carry not cleared");
         },
     },
     Instruction {
