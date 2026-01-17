@@ -105,9 +105,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 2,
         execute: |m| {
             let offset = m.fetch8();
-            let signed_offset = offset.cast_signed();
+            let signed_offset = i16::from(offset.cast_signed());
             if !m.test_bit("SR", ZERO) {
-                m.pc = m.pc.wrapping_add_signed(i16::from(signed_offset));
+                m.pc = m.pc.wrapping_add_signed(signed_offset);
             }
         },
         test: |m| {
