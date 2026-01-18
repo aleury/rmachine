@@ -226,6 +226,40 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "DEX",
+        mode: Mode::Implied,
+        opcode: 0xCA,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.set_reg("XR", m.reg("XR").wrapping_sub(1)),
+        test: |m| {
+            m.set_reg("XR", 0x01);
+            m.run_program(&[
+                0xCA, // $0000 DEX
+                0xCA, // $0001 DEX
+                0x00, // $0002 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
+        },
+    },
+    Instruction {
+        mnemonic: "DEY",
+        mode: Mode::Implied,
+        opcode: 0x88,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.set_reg("YR", m.reg("YR").wrapping_sub(1)),
+        test: |m| {
+            m.set_reg("YR", 0x01);
+            m.run_program(&[
+                0x88, // $0000 DEY
+                0x88, // $0001 DEY
+                0x00, // $0002 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
+        },
+    },
+    Instruction {
         mnemonic: "INX",
         mode: Mode::Implied,
         opcode: 0xE8,
