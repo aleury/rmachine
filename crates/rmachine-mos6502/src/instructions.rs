@@ -170,6 +170,62 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "DEC",
+        mode: Mode::ZeroPage,
+        opcode: 0xC6,
+        bytes: 2,
+        cycles: 5,
+        execute: |m| {
+            let addr = u16::from(m.fetch8());
+            let value = m.get8(addr);
+            m.set8(addr, value.wrapping_sub(1));
+        },
+        test: |m| {
+            m.set8(0x10, 0xFF);
+            m.run_program(&[
+                0xC6, 0x10, // $0000 DEC $10
+                0x00, //       $0002 BRK
+            ]);
+            assert_eq!(m.get8(0x10), 0xFE, "wrong value");
+
+            // Test overflow
+            m.set8(0x10, 0x00);
+            m.run_program(&[
+                0xC6, 0x10, // $0000 DEC $10
+                0x00, //       $0002 BRK
+            ]);
+            assert_eq!(m.get8(0x10), 0xFF, "wrong value");
+        },
+    },
+    Instruction {
+        mnemonic: "DEC",
+        mode: Mode::Absolute,
+        opcode: 0xCE,
+        bytes: 3,
+        cycles: 6,
+        execute: |m| {
+            let addr = m.fetch16();
+            let value = m.get8(addr);
+            m.set8(addr, value.wrapping_sub(1));
+        },
+        test: |m| {
+            m.set8(0x1000, 0xFF);
+            m.run_program(&[
+                0xCE, 0x00, 0x10, // $0000 DEC $1000
+                0x00, //             $0003 BRK
+            ]);
+            assert_eq!(m.get8(0x1000), 0xFE, "wrong value");
+
+            // Test overflow
+            m.set8(0x1000, 0x00);
+            m.run_program(&[
+                0xCE, 0x00, 0x10, // $0000 DEC $1000
+                0x00, //             $0003 BRK
+            ]);
+            assert_eq!(m.get8(0x1000), 0xFF, "wrong value");
+        },
+    },
+    Instruction {
         mnemonic: "INX",
         mode: Mode::Implied,
         opcode: 0xE8,
