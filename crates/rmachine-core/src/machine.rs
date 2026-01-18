@@ -21,7 +21,9 @@ use crate::exception::Exception;
 pub enum Mode {
     Implied,
     Immediate,
+    ZeroPage,
     Absolute,
+    Relative,
 }
 
 #[derive(Debug, Clone)]
