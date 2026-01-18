@@ -396,6 +396,21 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "NOP",
+        mode: Mode::Implied,
+        opcode: 0xEA,
+        bytes: 1,
+        cycles: 2,
+        execute: |_m| {},
+        test: |m| {
+            m.run_program(&[
+                0xEA, // 0x0000 NOP
+                0x00, //0 x0001 BRK
+            ]);
+            assert_eq!(m.pc, 0x0002, "wrong PC");
+        },
+    },
+    Instruction {
         mnemonic: "STA",
         mode: Mode::Absolute,
         opcode: 0x8D,
