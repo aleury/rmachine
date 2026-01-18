@@ -19,6 +19,39 @@ fn adc(m: &mut Machine, operand: u8) {
     } else {
         m.clear_bit("SR", CARRY);
     }
+
+    update_zero_flag(m, result);
+}
+
+fn dec(m: &mut Machine, addr: u16) {
+    let result = m.get8(addr).wrapping_sub(1);
+    m.set8(addr, result);
+    update_zero_flag(m, result);
+}
+
+fn dec_reg(m: &mut Machine, reg: &'static str) {
+    let result = m.reg(reg).wrapping_sub(1);
+    m.set_reg(reg, result);
+    update_zero_flag(m, result);
+}
+
+fn inc_reg(m: &mut Machine, reg: &'static str) {
+    let result = m.reg(reg).wrapping_add(1);
+    m.set_reg(reg, result);
+    update_zero_flag(m, result);
+}
+
+fn load_reg(m: &mut Machine, reg: &'static str, value: u8) {
+    m.set_reg(reg, value);
+    update_zero_flag(m, value);
+}
+
+fn update_zero_flag(m: &mut Machine, value: u8) {
+    if value == 0 {
+        m.set_bit("SR", ZERO);
+    } else {
+        m.clear_bit("SR", ZERO);
+    }
 }
 
 pub const INSTRUCTIONS: &[Instruction] = &[
@@ -41,6 +74,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
             assert!(!m.test_bit("SR", CARRY), "carry set");
+            assert!(!m.test_bit("SR", ZERO), "zero set");
+
             m.run_program(&[
                 //             ;A=FF, C=0
                 0x69, 0x01, // 0x0000 ADC #01
@@ -48,6 +83,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x00, "wrong AC");
             assert!(m.test_bit("SR", CARRY), "carry clear after overflow");
+            assert!(m.test_bit("SR", ZERO), "zero not set");
         },
     },
     Instruction {
@@ -71,14 +107,16 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x02, "wrong AC");
             assert!(!m.test_bit("SR", CARRY), "carry set");
+            assert!(!m.test_bit("SR", ZERO), "zero set");
             m.run_program(&[
                 //                   ;A=02, C=0
                 0x6D, 0x04, 0x00, // 0x0000 ADC $0004
                 0x00, //             0x0003 BRK
-                0xFF, //             0x0004 DB #FF
+                0xFE, //             0x0004 DB #$FE
             ]);
-            assert_eq!(m.reg("AC"), 0x1, "wrong AC");
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
             assert!(m.test_bit("SR", CARRY), "carry clear after overflow");
+            assert!(m.test_bit("SR", ZERO), "zero not set");
         },
     },
     Instruction {
@@ -238,25 +276,24 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 5,
         execute: |m| {
-            let addr = u16::from(m.fetch8());
-            let value = m.get8(addr);
-            m.set8(addr, value.wrapping_sub(1));
+            let addr = m.fetch8();
+            dec(m, u16::from(addr));
         },
         test: |m| {
-            m.set8(0x10, 0xFF);
+            m.set8(0x10, 0x01);
             m.run_program(&[
                 0xC6, 0x10, // $0000 DEC $10
                 0x00, //       $0002 BRK
             ]);
-            assert_eq!(m.get8(0x10), 0xFE, "wrong value");
+            assert_eq!(m.get8(0x10), 0x00, "wrong value");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
 
-            // Test overflow
-            m.set8(0x10, 0x00);
             m.run_program(&[
                 0xC6, 0x10, // $0000 DEC $10
                 0x00, //       $0002 BRK
             ]);
             assert_eq!(m.get8(0x10), 0xFF, "wrong value");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -267,24 +304,23 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 6,
         execute: |m| {
             let addr = m.fetch16();
-            let value = m.get8(addr);
-            m.set8(addr, value.wrapping_sub(1));
+            dec(m, addr);
         },
         test: |m| {
-            m.set8(0x1000, 0xFF);
+            m.set8(0x1000, 0x01);
             m.run_program(&[
                 0xCE, 0x00, 0x10, // $0000 DEC $1000
                 0x00, //             $0003 BRK
             ]);
-            assert_eq!(m.get8(0x1000), 0xFE, "wrong value");
+            assert_eq!(m.get8(0x1000), 0x00, "wrong value");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
 
-            // Test overflow
-            m.set8(0x1000, 0x00);
             m.run_program(&[
                 0xCE, 0x00, 0x10, // $0000 DEC $1000
                 0x00, //             $0003 BRK
             ]);
             assert_eq!(m.get8(0x1000), 0xFF, "wrong value");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -293,15 +329,22 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         opcode: 0xCA,
         bytes: 1,
         cycles: 2,
-        execute: |m| m.set_reg("XR", m.reg("XR").wrapping_sub(1)),
+        execute: |m| dec_reg(m, "XR"),
         test: |m| {
             m.set_reg("XR", 0x01);
             m.run_program(&[
                 0xCA, // $0000 DEX
-                0xCA, // $0001 DEX
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xCA, // $0000 DEX
                 0x00, // $0002 BRK
             ]);
             assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -310,15 +353,22 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         opcode: 0x88,
         bytes: 1,
         cycles: 2,
-        execute: |m| m.set_reg("YR", m.reg("YR").wrapping_sub(1)),
+        execute: |m| dec_reg(m, "YR"),
         test: |m| {
             m.set_reg("YR", 0x01);
             m.run_program(&[
                 0x88, // $0000 DEY
-                0x88, // $0001 DEY
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0x00, "wrong YR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0x88, // $0000 DEY
                 0x00, // $0002 BRK
             ]);
             assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -327,16 +377,22 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         opcode: 0xE8,
         bytes: 1,
         cycles: 2,
-        execute: |m| {
-            let result = m.reg("XR").wrapping_add(1);
-            m.set_reg("XR", result);
-        },
+        execute: |m| inc_reg(m, "XR"),
         test: |m| {
+            m.set_reg("XR", 0xFF);
+            m.run_program(&[
+                0xE8, // 0x0000 INX
+                0x00, // 0x0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
             m.run_program(&[
                 0xE8, // 0x0000 INX
                 0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.reg("XR"), 0x01, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -345,16 +401,22 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         opcode: 0xC8,
         bytes: 1,
         cycles: 2,
-        execute: |m| {
-            let result = m.reg("YR").wrapping_add(1);
-            m.set_reg("YR", result);
-        },
+        execute: |m| inc_reg(m, "YR"),
         test: |m| {
+            m.set_reg("YR", 0xFF);
+            m.run_program(&[
+                0xC8, // 0x0000 INY
+                0x00, // 0x0001 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0x00, "wrong YR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
             m.run_program(&[
                 0xC8, // 0x0000 INY
                 0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.reg("YR"), 0x01, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -380,15 +442,23 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let op = m.fetch8();
-            m.set_reg("AC", op);
+            let value = m.fetch8();
+            load_reg(m, "AC", value);
         },
         test: |m| {
+            m.run_program(&[
+                0xA9, 0x00, // 0x0000 LDA #$00
+                0x00, //       0x0002 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
             m.run_program(&[
                 0xA9, 0xFF, // 0x0000 LDA #$FF
                 0x00, //       0x0002 BRK
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -398,17 +468,26 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 3,
         execute: |m| {
-            let addr = m.fetch8();
-            let op = m.get8(u16::from(addr));
-            m.set_reg("AC", op);
+            let addr = u16::from(m.fetch8());
+            let value = m.get8(addr);
+            load_reg(m, "AC", value);
         },
         test: |m| {
+            m.run_program(&[
+                0xA5, 0x03, // 0x0000 LDA $03
+                0x00, //       0x0002 BRK
+                0x00, //       0x0003 DB #$00
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
             m.run_program(&[
                 0xA5, 0x03, // 0x0000 LDA $03
                 0x00, //       0x0002 BRK
                 0xFF, //       0x0003 DB #$FF
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -419,16 +498,25 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 2,
         execute: |m| {
             let addr = m.fetch16();
-            let op = m.get8(addr);
-            m.set_reg("AC", op);
+            let value = m.get8(addr);
+            load_reg(m, "AC", value);
         },
         test: |m| {
+            m.run_program(&[
+                0xAD, 0x04, 0x00, // 0x0000 LDA $0004
+                0x00, //             0x0003 BRK
+                0x00, //             0x0004 DB #$00
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
             m.run_program(&[
                 0xAD, 0x04, 0x00, // 0x0000 LDA $0004
                 0x00, //             0x0003 BRK
                 0xFF, //             0x0004 DB #$FF
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -438,15 +526,23 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let op = m.fetch8();
-            m.set_reg("XR", op);
+            let value = m.fetch8();
+            load_reg(m, "XR", value);
         },
         test: |m| {
             m.run_program(&[
-                0xA2, 0x2a, // 0x0000 LDX #$2a
+                0xA2, 0x00, // 0x0000 LDX #$00
                 0x00, //       0x0002 BRK
             ]);
-            assert_eq!(m.reg("XR"), 0x2a, "wrong XR");
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xA2, 0xFF, // 0x0000 LDX #$FF
+                0x00, //       0x0002 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -457,16 +553,25 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 3,
         execute: |m| {
             let addr = m.fetch8();
-            let op = m.get8(u16::from(addr));
-            m.set_reg("XR", op);
+            let value = m.get8(u16::from(addr));
+            load_reg(m, "XR", value);
         },
         test: |m| {
             m.run_program(&[
                 0xA6, 0x03, // 0x0000 LDX $03
                 0x00, //       0x0002 BRK
-                0x2a, //       0x0003 DB #$2a
+                0x00, //       0x0003 DB #$00
             ]);
-            assert_eq!(m.reg("XR"), 0x2a, "wrong XR");
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xA6, 0x03, // 0x0000 LDX $03
+                0x00, //       0x0002 BRK
+                0xFF, //       0x0003 DB #$FF
+            ]);
+            assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -477,16 +582,25 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 4,
         execute: |m| {
             let addr = m.fetch16();
-            let op = m.get8(addr);
-            m.set_reg("XR", op);
+            let value = m.get8(addr);
+            load_reg(m, "XR", value);
         },
         test: |m| {
             m.run_program(&[
                 0xAE, 0x04, 0x00, // 0x0000 LDX $0004
                 0x00, //             0x0003 BRK
-                0x2a, //             0x0004 DB #$2a
+                0x00, //             0x0004 DB #$00
             ]);
-            assert_eq!(m.reg("XR"), 0x2a, "wrong XR");
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xAE, 0x04, 0x00, // 0x0000 LDX $0004
+                0x00, //             0x0003 BRK
+                0xFF, //             0x0004 DB #$FF
+            ]);
+            assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -496,15 +610,23 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let op = m.fetch8();
-            m.set_reg("YR", op);
+            let value = m.fetch8();
+            load_reg(m, "YR", value);
         },
         test: |m| {
             m.run_program(&[
-                0xA0, 0x2a, // 0x0000 LDY #$2a
+                0xA0, 0x00, // 0x0000 LDY #$00
                 0x00, //       0x0002 BRK
             ]);
-            assert_eq!(m.reg("YR"), 0x2a, "wrong YR");
+            assert_eq!(m.reg("YR"), 0x00, "wrong YR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xA0, 0xFF, // 0x0000 LDY #$FF
+                0x00, //       0x0002 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -515,16 +637,25 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 3,
         execute: |m| {
             let addr = m.fetch8();
-            let op = m.get8(u16::from(addr));
-            m.set_reg("YR", op);
+            let value = m.get8(u16::from(addr));
+            load_reg(m, "YR", value);
         },
         test: |m| {
             m.run_program(&[
                 0xA4, 0x03, // 0x0000 LDY $03
                 0x00, //       0x0002 BRK
-                0x2a, //       0x0003 DB #$2a
+                0x00, //       0x0003 DB #$00
             ]);
-            assert_eq!(m.reg("YR"), 0x2a, "wrong YR");
+            assert_eq!(m.reg("YR"), 0x00, "wrong YR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xA4, 0x03, // 0x0000 LDY $03
+                0x00, //       0x0002 BRK
+                0xFF, //       0x0003 DB #$FF
+            ]);
+            assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
@@ -535,16 +666,25 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 4,
         execute: |m| {
             let addr = m.fetch16();
-            let op = m.get8(addr);
-            m.set_reg("YR", op);
+            let value = m.get8(addr);
+            load_reg(m, "YR", value);
         },
         test: |m| {
             m.run_program(&[
                 0xAC, 0x04, 0x00, // 0x0000 LDY $0004
                 0x00, //             0x0003 BRK
-                0x2a, //             0x0004 DB #$2a
+                0x00, //             0x0004 DB #$00
             ]);
-            assert_eq!(m.reg("YR"), 0x2a, "wrong YR");
+            assert_eq!(m.reg("YR"), 0x00, "wrong YR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xAC, 0x04, 0x00, // 0x0000 LDY $0004
+                0x00, //             0x0003 BRK
+                0xFF, //             0x0004 DB #$FF
+            ]);
+            assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
         },
     },
     Instruction {
