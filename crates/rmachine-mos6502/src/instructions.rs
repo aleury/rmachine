@@ -704,6 +704,27 @@ pub const INSTRUCTIONS: &[Instruction] = &[
     },
     Instruction {
         mnemonic: "STA",
+        mode: Mode::ZeroPage,
+        opcode: 0x85,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = u16::from(m.fetch8());
+            let value = m.reg("AC");
+            m.set8(addr, value);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA9, 0x42, // $0000 LDA #$42
+                0x85, 0x05, // $0002 STA $05
+                0x00, //       $0004 BRK
+                0x00, //       $0005 DB #$00
+            ]);
+            assert_eq!(m.get8(0x05), 0x42, "wrong value at address");
+        },
+    },
+    Instruction {
+        mnemonic: "STA",
         mode: Mode::Absolute,
         opcode: 0x8D,
         bytes: 3,
@@ -715,10 +736,94 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
         test: |m| {
             m.run_program(&[
-                0xA9, 0x42, //       0x0000 LDA #42
+                0xA9, 0x42, //       0x0000 LDA #$42
                 0x8D, 0x06, 0x00, // 0x0002 STA $0006
                 0x00, //             0x0005 BRK
-                0x00, //             0x0006 DB #0
+                0x00, //             0x0006 DB #$00
+            ]);
+            assert_eq!(m.get8(0x0006), 0x42, "wrong value at address");
+        },
+    },
+    Instruction {
+        mnemonic: "STX",
+        mode: Mode::ZeroPage,
+        opcode: 0x86,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = u16::from(m.fetch8());
+            let op = m.reg("XR");
+            m.set8(addr, op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA2, 0x42, // $0000 LDX #$42
+                0x86, 0x05, // $0002 STX $05
+                0x00, //       $0004 BRK
+                0x00, //       $0005 DB #$00
+            ]);
+            assert_eq!(m.get8(0x05), 0x42, "wrong value at address");
+        },
+    },
+    Instruction {
+        mnemonic: "STX",
+        mode: Mode::Absolute,
+        opcode: 0x8E,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let addr = m.fetch16();
+            let op = m.reg("XR");
+            m.set8(addr, op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA2, 0x42, //       $0000 LDX #$42
+                0x8E, 0x06, 0x00, // $0002 STX $0006
+                0x00, //             $0005 BRK
+                0x00, //             $0006 DB #$00
+            ]);
+            assert_eq!(m.get8(0x0006), 0x42, "wrong value at address");
+        },
+    },
+    Instruction {
+        mnemonic: "STY",
+        mode: Mode::ZeroPage,
+        opcode: 0x84,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = u16::from(m.fetch8());
+            let op = m.reg("YR");
+            m.set8(addr, op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA0, 0x42, // $0000 LDY #$42
+                0x84, 0x05, // $0002 STY $05
+                0x00, //       $0004 BRK
+                0x00, //       $0005 DB #$00
+            ]);
+            assert_eq!(m.get8(0x05), 0x42, "wrong value at address");
+        },
+    },
+    Instruction {
+        mnemonic: "STY",
+        mode: Mode::Absolute,
+        opcode: 0x8C,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let addr = m.fetch16();
+            let op = m.reg("YR");
+            m.set8(addr, op);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA0, 0x42, //       $0000 LDY #$42
+                0x8C, 0x06, 0x00, // $0002 STY $0006
+                0x00, //             $0005 BRK
+                0x00, //             $0006 DB #$00
             ]);
             assert_eq!(m.get8(0x0006), 0x42, "wrong value at address");
         },
