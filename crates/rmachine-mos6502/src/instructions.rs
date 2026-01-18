@@ -697,7 +697,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         test: |m| {
             m.run_program(&[
                 0xEA, // 0x0000 NOP
-                0x00, //0 x0001 BRK
+                0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.pc, 0x0002, "wrong PC");
         },
