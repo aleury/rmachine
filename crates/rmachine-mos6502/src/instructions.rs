@@ -128,6 +128,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0xA9, 0x2a, // $0002 LDA #$2a
                 0x00, //       $0004 BRK
             ]);
+            assert_eq!(m.pc, 0x0005, "wrong pc");
             assert_eq!(m.reg("AC"), 0x2a, "wrong AC");
         },
     },
@@ -190,10 +191,11 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             m.set_bit("SR", ZERO);
             m.set_bit("SR", CARRY);
             m.run_program(&[
-                0xD0, 0x02, // $0000 BNE $02 (not taken)
+                0xD0, 0x01, // $0000 BNE $02 (not taken)
                 0x18, // $0002 CLC
                 0x00, // $0003 BRK
             ]);
+            assert_eq!(m.pc(), 0x0004, "wrong PC");
             assert!(!m.test_bit("SR", CARRY), "carry not cleared");
         },
     },
