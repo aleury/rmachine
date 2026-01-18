@@ -191,9 +191,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             m.set_bit("SR", ZERO);
             m.set_bit("SR", CARRY);
             m.run_program(&[
-                0xD0, 0x01, // $0000 BNE $02 (not taken)
-                0x18, // $0002 CLC
-                0x00, // $0003 BRK
+                0xD0, 0x01, // $0000 BNE $01 (not taken)
+                0x18, //       $0002 CLC
+                0x00, //       $0003 BRK
             ]);
             assert_eq!(m.pc(), 0x0004, "wrong PC");
             assert!(!m.test_bit("SR", CARRY), "carry not cleared");
