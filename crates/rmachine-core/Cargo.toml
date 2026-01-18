@@ -12,6 +12,7 @@ categories.workspace = true
 
 [dependencies]
 anyhow = "1.0"
+ratatui = "0.30.0"
 num-traits = "0.2.19"
 
 [lints]

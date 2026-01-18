@@ -2,11 +2,11 @@ use anyhow::Result;
 use clap::Parser;
 use clap_num::maybe_hex;
 
-use rmachine_core::monitor::Monitor;
+use rmachine_core::{monitor::Monitor, tui_monitor::TuiMonitor};
 use rmachine_mos6502::MOS6502;
 
 #[derive(Parser)]
-#[command(version, about, long_about=None)]
+#[command(version, about="A MOS6502 emulator", long_about=None)]
 struct Cli {
     /// Optional binary file to load
     path: Option<String>,
@@ -15,6 +15,8 @@ struct Cli {
     addr: u16,
     #[arg(short, long)]
     debug: bool,
+    #[arg(short, long)]
+    tui: bool,
 }
 
 fn main() -> Result<()> {
@@ -25,7 +27,13 @@ fn main() -> Result<()> {
     if let Some(path) = args.path {
         m.load_bin(args.addr, path)?;
     }
-    let mut mon = Monitor::new(&mut m);
-    mon.debug = args.debug;
-    mon.run()
+
+    if args.tui {
+        let mut mon = TuiMonitor::new(&mut m);
+        mon.run()
+    } else {
+        let mut mon = Monitor::new(&mut m);
+        mon.debug = args.debug;
+        mon.run()
+    }
 }

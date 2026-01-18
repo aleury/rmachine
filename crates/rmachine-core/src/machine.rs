@@ -24,6 +24,19 @@ pub enum Mode {
     Absolute,
 }
 
+impl Mode {
+    fn format_operand(&self, operand_bytes: &[u8]) -> String {
+        match self {
+            Mode::Implied => String::new(),
+            Mode::Immediate => format!("#${:02X}", operand_bytes[0]),
+            Mode::Absolute => format!(
+                "${:04X}",
+                u16::from_le_bytes([operand_bytes[0], operand_bytes[1]])
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Instruction {
     pub mnemonic: &'static str,
@@ -37,12 +50,12 @@ pub struct Instruction {
 
 #[derive(Debug)]
 pub struct Machine {
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
     pub pc: u16,
     pub registers: HashMap<&'static str, u8>,
-    register_list: &'static [&'static str],
+    pub register_list: &'static [&'static str],
     instructions: HashMap<u8, &'static Instruction>,
-    cycles: u64,
+    pub cycles: u64,
     cycle_time_ns: u64,
     timer_ns: u64,
     pub exception: Option<Exception>,
@@ -103,6 +116,7 @@ impl Machine {
     /// The contents of memory are not affected.
     pub fn reset(&mut self) {
         self.pc = 0;
+        self.exception = None;
         for register in self.registers.values_mut() {
             *register = 0;
         }
@@ -384,6 +398,23 @@ impl Machine {
             x => unreachable!("invalid number of bytes: {x}"),
         }
         Some(disassembly)
+    }
+
+    #[must_use]
+    pub fn disassemble_at(&self, addr: u16) -> Option<(String, u16)> {
+        let opcode = self.memory.get(usize::from(addr))?;
+        let instruction = self.instructions.get(opcode)?;
+        let operand_bytes: Vec<u8> = (1..instruction.bytes)
+            .map(|i| self.get8(addr.wrapping_add(u16::from(i))))
+            .collect();
+        let disassembly = format!(
+            "{} {}",
+            instruction.mnemonic,
+            instruction.mode.format_operand(&operand_bytes)
+        )
+        .trim_end()
+        .to_string();
+        Some((disassembly, u16::from(instruction.bytes)))
     }
 
     pub fn trap(&mut self, x: Exception) {
