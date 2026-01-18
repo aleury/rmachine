@@ -82,6 +82,56 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "BEQ",
+        mode: Mode::Relative,
+        opcode: 0xF0,
+        bytes: 2,
+        cycles: 2,
+        execute: |m| {
+            let offset = m.fetch8();
+            if m.test_bit("SR", ZERO) {
+                let signed_offset = i16::from(offset.cast_signed());
+                m.pc = m.pc.wrapping_add_signed(signed_offset);
+            }
+        },
+        test: |m| {
+            // Test branch forward
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0xF0, 0x03, // $0000 BEQ $03
+                0x00, //       $0002 BRK
+                0xA9, 0x2a, // $0003 LDA #$2a
+                0xA9, 0xff, // $0005 LDA #$ff
+                0x00, //       $0007 BRK
+            ]);
+            assert_eq!(m.pc, 0x0008, "wrong PC");
+            assert_eq!(m.reg("AC"), 0xff, "wrong AC");
+
+            // Test branch backward
+            m.set_bit("SR", ZERO);
+            m.set_reg("AC", 0x00);
+            m.run_program(&[
+                0x4C, 0x06, 0x00, // $0000 JMP $0006
+                0xA9, 0x2a, //       $0003 LDA #$2a
+                0x00, //             $0005 BRK
+                0xF0, 0xfb, //       $0006 BEQ $fb
+                0x00, //             $0008 BRK
+            ]);
+            assert_eq!(m.pc, 0x0006, "wrong pc");
+            assert_eq!(m.reg("AC"), 0x2a, "wrong AC");
+
+            // Test branch skipped
+            m.clear_bit("SR", ZERO);
+            m.set_reg("AC", 0x00);
+            m.run_program(&[
+                0xF0, 0x02, // $0000 BEQ $02
+                0xA9, 0x2a, // $0002 LDA #$2a
+                0x00, //       $0004 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x2a, "wrong AC");
+        },
+    },
+    Instruction {
         mnemonic: "BRK",
         mode: Mode::Implied,
         opcode: 0x00,
@@ -105,8 +155,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 2,
         execute: |m| {
             let offset = m.fetch8();
-            let signed_offset = i16::from(offset.cast_signed());
             if !m.test_bit("SR", ZERO) {
+                let signed_offset = i16::from(offset.cast_signed());
                 m.pc = m.pc.wrapping_add_signed(signed_offset);
             }
         },
@@ -134,6 +184,16 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0x00, //             $0007 BRK (skipped)
             ]);
             assert_eq!(m.pc(), 0x0005, "wrong PC");
+            assert!(!m.test_bit("SR", CARRY), "carry not cleared");
+
+            // Test branch skipped
+            m.set_bit("SR", ZERO);
+            m.set_bit("SR", CARRY);
+            m.run_program(&[
+                0xD0, 0x02, // $0000 BNE $02 (not taken)
+                0x18, // $0002 CLC
+                0x00, // $0003 BRK
+            ]);
             assert!(!m.test_bit("SR", CARRY), "carry not cleared");
         },
     },
