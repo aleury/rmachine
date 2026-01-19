@@ -375,6 +375,52 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "CMP",
+        mode: Mode::ZeroPage,
+        opcode: 0xC5,
+        bytes: 2,
+        cycles: 3,
+        execute: |m| {
+            let addr = m.fetch8();
+            let value = m.get8(addr.into());
+            compare(m, "AC", value);
+        },
+        test: |m| {
+            m.set_reg("AC", 0x05);
+            m.set8(0x10, 0x05);
+            m.run_program(&[
+                0xC5, 0x10, // $0000 CMP $10
+                0x00, //      $0002 BRK
+            ]);
+            assert!(m.test_bit("SR", CARRY), "carry flag not set");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+        },
+    },
+    Instruction {
+        mnemonic: "CMP",
+        mode: Mode::Absolute,
+        opcode: 0xCD,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let addr = m.fetch16();
+            let value = m.get8(addr);
+            compare(m, "AC", value);
+        },
+        test: |m| {
+            m.set_reg("AC", 0x05);
+            m.set8(0x1000, 0x05);
+            m.run_program(&[
+                0xCD, 0x00, 0x10, // $0000 CMP $1000
+                0x00, //             $0003 BRK
+            ]);
+            assert!(m.test_bit("SR", CARRY), "carry flag not set");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+        },
+    },
+    Instruction {
         mnemonic: "DEC",
         mode: Mode::ZeroPage,
         opcode: 0xC6,
