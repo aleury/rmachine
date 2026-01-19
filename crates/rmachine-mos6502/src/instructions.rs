@@ -1,6 +1,6 @@
 use rmachine_core::{exception::Exception, machine::Mode, prelude::*};
 
-use crate::flags::{CARRY, DECIMAL, INTERRUPT, OVERFLOW, ZERO};
+use crate::flags::{CARRY, DECIMAL, INTERRUPT, NEGATIVE, OVERFLOW, ZERO};
 
 /// Performs ADC (Add with Carry) operation.
 ///
@@ -305,6 +305,69 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0x00, // 0x0001 BRK
             ]);
             assert!(!m.test_bit("SR", OVERFLOW), "overflow flag not cleared");
+        },
+    },
+    Instruction {
+        mnemonic: "CMP",
+        mode: Mode::Immediate,
+        opcode: 0xC9,
+        bytes: 2,
+        cycles: 2,
+        execute: |m| {
+            let reg = m.reg("AC");
+            let value = m.fetch8();
+            let result = reg.wrapping_sub(value);
+
+            if reg >= value {
+                m.set_bit("SR", CARRY);
+            } else {
+                m.clear_bit("SR", CARRY);
+            }
+
+            update_zero_flag(m, result);
+
+            if result & 0x80 != 0 {
+                m.set_bit("SR", NEGATIVE);
+            } else {
+                m.clear_bit("SR", NEGATIVE);
+            }
+        },
+        test: |m| {
+            m.set_reg("AC", 0xFE);
+            m.run_program(&[
+                0xC9, 0xFE, // $0000 CMP #$FE
+                0x00, //       $0002 BRK
+            ]);
+            assert!(m.test_bit("SR", CARRY), "carry flag not set");
+            assert!(m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("AC", 0xFE);
+            m.run_program(&[
+                0xC9, 0x02, // $0000 CMP #$02
+                0x00, //       $0002 BRK
+            ]);
+            assert!(m.test_bit("SR", CARRY), "carry flag not set");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("AC", 0x05);
+            m.run_program(&[
+                0xC9, 0x02, // $0000 CMP #$02
+                0x00, //       $0002 BRK
+            ]);
+            assert!(m.test_bit("SR", CARRY), "carry flag not set");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("AC", 0xFE);
+            m.run_program(&[
+                0xC9, 0xFF, // $0000 CMP #$FF
+                0x00, //       $0002 BRK
+            ]);
+            assert!(!m.test_bit("SR", CARRY), "carry flag not cleared");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {

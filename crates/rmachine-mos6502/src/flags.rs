@@ -7,3 +7,4 @@ pub const ZERO: u8 = 0b0000_0010;
 pub const INTERRUPT: u8 = 0b0000_0100;
 pub const DECIMAL: u8 = 0b0000_1000;
 pub const OVERFLOW: u8 = 0b0100_0000;
+pub const NEGATIVE: u8 = 0b1000_0000;
