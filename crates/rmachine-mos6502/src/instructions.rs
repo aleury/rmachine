@@ -29,6 +29,12 @@ fn dec(m: &mut Machine, addr: u16) {
     update_zero_flag(m, result);
 }
 
+fn inc(m: &mut Machine, addr: u16) {
+    let result = m.get8(addr).wrapping_add(1);
+    m.set8(addr, result);
+    update_zero_flag(m, result);
+}
+
 fn dec_reg(m: &mut Machine, reg: &'static str) {
     let result = m.reg(reg).wrapping_sub(1);
     m.set_reg(reg, result);
@@ -277,7 +283,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 5,
         execute: |m| {
             let addr = m.fetch8();
-            dec(m, u16::from(addr));
+            dec(m, addr.into());
         },
         test: |m| {
             m.set8(0x10, 0x01);
@@ -378,10 +384,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 5,
         execute: |m| {
-            let addr = u16::from(m.fetch8());
-            let result = m.get8(addr).wrapping_add(1);
-            m.set8(addr, result);
-            update_zero_flag(m, result);
+            let addr = m.fetch8();
+            inc(m, addr.into());
         },
         test: |m| {
             m.set8(0x10, 0xFF);
@@ -408,9 +412,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 6,
         execute: |m| {
             let addr = m.fetch16();
-            let result = m.get8(addr).wrapping_add(1);
-            m.set8(addr, result);
-            update_zero_flag(m, result);
+            inc(m, addr);
         },
         test: |m| {
             m.set8(0x1000, 0xFF);
@@ -526,8 +528,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 3,
         execute: |m| {
-            let addr = u16::from(m.fetch8());
-            let value = m.get8(addr);
+            let addr = m.fetch8();
+            let value = m.get8(addr.into());
             load_reg(m, "AC", value);
         },
         test: |m| {
@@ -611,7 +613,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 3,
         execute: |m| {
             let addr = m.fetch8();
-            let value = m.get8(u16::from(addr));
+            let value = m.get8(addr.into());
             load_reg(m, "XR", value);
         },
         test: |m| {
@@ -695,7 +697,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         cycles: 3,
         execute: |m| {
             let addr = m.fetch8();
-            let value = m.get8(u16::from(addr));
+            let value = m.get8(addr.into());
             load_reg(m, "YR", value);
         },
         test: |m| {
@@ -767,9 +769,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 3,
         execute: |m| {
-            let addr = u16::from(m.fetch8());
+            let addr = m.fetch8();
             let value = m.reg("AC");
-            m.set8(addr, value);
+            m.set8(addr.into(), value);
         },
         test: |m| {
             m.run_program(&[
@@ -809,9 +811,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 3,
         execute: |m| {
-            let addr = u16::from(m.fetch8());
+            let addr = m.fetch8();
             let op = m.reg("XR");
-            m.set8(addr, op);
+            m.set8(addr.into(), op);
         },
         test: |m| {
             m.run_program(&[
@@ -851,9 +853,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 3,
         execute: |m| {
-            let addr = u16::from(m.fetch8());
+            let addr = m.fetch8();
             let op = m.reg("YR");
-            m.set8(addr, op);
+            m.set8(addr.into(), op);
         },
         test: |m| {
             m.run_program(&[
