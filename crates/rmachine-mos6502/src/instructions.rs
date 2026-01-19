@@ -888,4 +888,76 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             assert_eq!(m.get8(0x0006), 0x42, "wrong value at address");
         },
     },
+    Instruction {
+        mnemonic: "TAX",
+        mode: Mode::Implied,
+        opcode: 0xAA,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| load_reg(m, "XR", m.reg("AC")),
+        test: |m| {
+            m.set_reg("AC", 0x42);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0xAA, // $0000 TAX
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x42, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+        },
+    },
+    Instruction {
+        mnemonic: "TAY",
+        mode: Mode::Implied,
+        opcode: 0xA8,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| load_reg(m, "YR", m.reg("AC")),
+        test: |m| {
+            m.set_reg("AC", 0x42);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0xA8, // $0000 TAY
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0x42, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+        },
+    },
+    Instruction {
+        mnemonic: "TXA",
+        mode: Mode::Implied,
+        opcode: 0x8A,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| load_reg(m, "AC", m.reg("XR")),
+        test: |m| {
+            m.set_reg("XR", 0x42);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0x8A, // $0000 TXA
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x42, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+        },
+    },
+    Instruction {
+        mnemonic: "TYA",
+        mode: Mode::Implied,
+        opcode: 0x98,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| load_reg(m, "AC", m.reg("YR")),
+        test: |m| {
+            m.set_reg("YR", 0x42);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0x98, // $0000 TYA
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x42, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+        },
+    },
 ];
