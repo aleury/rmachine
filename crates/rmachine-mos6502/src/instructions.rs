@@ -1,6 +1,6 @@
 use rmachine_core::{exception::Exception, machine::Mode, prelude::*};
 
-use crate::flags::{CARRY, DECIMAL, INTERRUPT, ZERO};
+use crate::flags::{CARRY, DECIMAL, INTERRUPT, OVERFLOW, ZERO};
 
 /// Performs ADC (Add with Carry) operation.
 ///
@@ -273,6 +273,38 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0x00, // 0x0001 BRK
             ]);
             assert!(!m.test_bit("SR", DECIMAL), "decimal mode set");
+        },
+    },
+    Instruction {
+        mnemonic: "CLI",
+        mode: Mode::Implied,
+        opcode: 0x58,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.clear_bit("SR", INTERRUPT),
+        test: |m| {
+            m.set_bit("SR", INTERRUPT);
+            m.run_program(&[
+                0x58, // 0x0000 CLI
+                0x00, // 0x0001 BRK
+            ]);
+            assert!(!m.test_bit("SR", INTERRUPT), "interrupt flag not cleared");
+        },
+    },
+    Instruction {
+        mnemonic: "CLV",
+        mode: Mode::Implied,
+        opcode: 0xB8,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.clear_bit("SR", OVERFLOW),
+        test: |m| {
+            m.set_bit("SR", OVERFLOW);
+            m.run_program(&[
+                0xB8, // 0x0000 CLV
+                0x00, // 0x0001 BRK
+            ]);
+            assert!(!m.test_bit("SR", OVERFLOW), "overflow flag not cleared");
         },
     },
     Instruction {
