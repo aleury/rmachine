@@ -14,12 +14,7 @@ fn adc(m: &mut Machine, operand: u8) {
 
     m.set_reg("AC", result);
 
-    if overflow || overflow2 {
-        m.set_bit("SR", CARRY);
-    } else {
-        m.clear_bit("SR", CARRY);
-    }
-
+    update_carry_flag(m, overflow || overflow2);
     update_zero_flag(m, result);
 }
 
@@ -57,6 +52,22 @@ fn update_zero_flag(m: &mut Machine, value: u8) {
         m.set_bit("SR", ZERO);
     } else {
         m.clear_bit("SR", ZERO);
+    }
+}
+
+fn update_negative_flag(m: &mut Machine, value: u8) {
+    if value & NEGATIVE != 0 {
+        m.set_bit("SR", NEGATIVE);
+    } else {
+        m.clear_bit("SR", NEGATIVE);
+    }
+}
+
+fn update_carry_flag(m: &mut Machine, condition: bool) {
+    if condition {
+        m.set_bit("SR", CARRY);
+    } else {
+        m.clear_bit("SR", CARRY);
     }
 }
 
@@ -318,19 +329,9 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             let value = m.fetch8();
             let result = reg.wrapping_sub(value);
 
-            if reg >= value {
-                m.set_bit("SR", CARRY);
-            } else {
-                m.clear_bit("SR", CARRY);
-            }
-
+            update_carry_flag(m, reg >= value);
             update_zero_flag(m, result);
-
-            if result & 0x80 != 0 {
-                m.set_bit("SR", NEGATIVE);
-            } else {
-                m.clear_bit("SR", NEGATIVE);
-            }
+            update_negative_flag(m, result);
         },
         test: |m| {
             m.set_reg("AC", 0xFE);
