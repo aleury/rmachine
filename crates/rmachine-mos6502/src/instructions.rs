@@ -372,6 +372,64 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "INC",
+        mode: Mode::ZeroPage,
+        opcode: 0xE6,
+        bytes: 2,
+        cycles: 5,
+        execute: |m| {
+            let addr = u16::from(m.fetch8());
+            let result = m.get8(addr).wrapping_add(1);
+            m.set8(addr, result);
+            update_zero_flag(m, result);
+        },
+        test: |m| {
+            m.set8(0x10, 0xFF);
+            m.run_program(&[
+                0xE6, 0x10, // $0000 INC $10
+                0x00, //       $0002 BRK
+            ]);
+            assert_eq!(m.get8(0x10), 0x00, "wrong value");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xE6, 0x10, // $0000 INC $10
+                0x00, //       $0002 BRK
+            ]);
+            assert_eq!(m.get8(0x10), 0x01, "wrong value");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+        },
+    },
+    Instruction {
+        mnemonic: "INC",
+        mode: Mode::Absolute,
+        opcode: 0xEE,
+        bytes: 3,
+        cycles: 6,
+        execute: |m| {
+            let addr = m.fetch16();
+            let result = m.get8(addr).wrapping_add(1);
+            m.set8(addr, result);
+            update_zero_flag(m, result);
+        },
+        test: |m| {
+            m.set8(0x1000, 0xFF);
+            m.run_program(&[
+                0xEE, 0x00, 0x10, // $0000 INC $1000
+                0x00, //             $0003 BRK
+            ]);
+            assert_eq!(m.get8(0x1000), 0x00, "wrong value");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+
+            m.run_program(&[
+                0xEE, 0x00, 0x10, // $0000 INC $1000
+                0x00, //             $0003 BRK
+            ]);
+            assert_eq!(m.get8(0x1000), 0x01, "wrong value");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+        },
+    },
+    Instruction {
         mnemonic: "INX",
         mode: Mode::Implied,
         opcode: 0xE8,
