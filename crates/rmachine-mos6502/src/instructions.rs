@@ -47,6 +47,14 @@ fn load_reg(m: &mut Machine, reg: &'static str, value: u8) {
     update_zero_flag(m, value);
 }
 
+fn compare(m: &mut Machine, reg: &'static str, value: u8) {
+    let reg_value = m.reg(reg);
+    let result = reg_value.wrapping_sub(value);
+    update_carry_flag(m, reg_value >= value);
+    update_zero_flag(m, result);
+    update_negative_flag(m, result);
+}
+
 fn update_zero_flag(m: &mut Machine, value: u8) {
     if value == 0 {
         m.set_bit("SR", ZERO);
@@ -325,13 +333,8 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         bytes: 2,
         cycles: 2,
         execute: |m| {
-            let reg = m.reg("AC");
             let value = m.fetch8();
-            let result = reg.wrapping_sub(value);
-
-            update_carry_flag(m, reg >= value);
-            update_zero_flag(m, result);
-            update_negative_flag(m, result);
+            compare(m, "AC", value);
         },
         test: |m| {
             m.set_reg("AC", 0xFE);
