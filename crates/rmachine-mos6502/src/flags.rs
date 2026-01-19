@@ -4,4 +4,5 @@
 /// N V - B D I Z C
 pub const CARRY: u8 = 0b0000_0001;
 pub const ZERO: u8 = 0b0000_0010;
+pub const INTERRUPT: u8 = 0b0000_0100;
 pub const DECIMAL: u8 = 0b0000_1000;

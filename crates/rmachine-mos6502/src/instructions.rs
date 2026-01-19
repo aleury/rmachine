@@ -1,6 +1,6 @@
 use rmachine_core::{exception::Exception, machine::Mode, prelude::*};
 
-use crate::flags::{CARRY, DECIMAL, ZERO};
+use crate::flags::{CARRY, DECIMAL, INTERRUPT, ZERO};
 
 /// Performs ADC (Add with Carry) operation.
 ///
@@ -760,6 +760,51 @@ pub const INSTRUCTIONS: &[Instruction] = &[
                 0x00, // 0x0001 BRK
             ]);
             assert_eq!(m.pc, 0x0002, "wrong PC");
+        },
+    },
+    Instruction {
+        mnemonic: "SEC",
+        mode: Mode::Implied,
+        opcode: 0x38,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.set_bit("SR", CARRY),
+        test: |m| {
+            m.run_program(&[
+                0x38, // 0x0000 SEC
+                0x00, // 0x0001 BRK
+            ]);
+            assert!(m.test_bit("SR", CARRY), "carry flag not set");
+        },
+    },
+    Instruction {
+        mnemonic: "SED",
+        mode: Mode::Implied,
+        opcode: 0xF8,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.set_bit("SR", DECIMAL),
+        test: |m| {
+            m.run_program(&[
+                0xF8, // 0x0000 SED
+                0x00, // 0x0001 BRK
+            ]);
+            assert!(m.test_bit("SR", DECIMAL), "decimal flag not set");
+        },
+    },
+    Instruction {
+        mnemonic: "SEI",
+        mode: Mode::Implied,
+        opcode: 0x78,
+        bytes: 1,
+        cycles: 2,
+        execute: |m| m.set_bit("SR", INTERRUPT),
+        test: |m| {
+            m.run_program(&[
+                0x78, // 0x0000 SEI
+                0x00, // 0x0001 BRK
+            ]);
+            assert!(m.test_bit("SR", INTERRUPT), "interrupt  flag not set");
         },
     },
     Instruction {
