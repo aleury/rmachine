@@ -45,6 +45,7 @@ fn inc_reg(m: &mut Machine, reg: &'static str) {
 fn load_reg(m: &mut Machine, reg: &'static str, value: u8) {
     m.set_reg(reg, value);
     update_zero_flag(m, value);
+    update_negative_flag(m, value);
 }
 
 fn compare(m: &mut Machine, reg: &'static str, value: u8) {
@@ -657,6 +658,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x00, "wrong AC");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xA9, 0xFF, // 0x0000 LDA #$FF
@@ -664,6 +666,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -685,6 +688,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x00, "wrong AC");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xA5, 0x03, // 0x0000 LDA $03
@@ -693,6 +697,61 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+        },
+    },
+    Instruction {
+        mnemonic: "LDA",
+        mode: Mode::ZeroPageX,
+        opcode: 0xB5,
+        bytes: 2,
+        cycles: 4,
+        execute: |m| {
+            let base = m.fetch8();
+            let addr = base.wrapping_add(m.reg("XR"));
+            let value = m.get8(addr.into());
+            load_reg(m, "AC", value);
+        },
+        test: |m| {
+            m.run_program(&[
+                0xA2, 0x02, // $0000 LDX #$02
+                0xB5, 0x03, // $0002 LDA $03,X
+                0x00, //       $0004 BRK
+                0x00, //       $0005 DB #$00
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.run_program(&[
+                0xA2, 0x00, // $0000 LDX #$00
+                0xB5, 0x05, // $0002 LDA $05,X
+                0x00, //       $0004 BRK
+                0xFF, //       $0005 DB #$FF
+            ]);
+            assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set8(0x08, 0x42);
+            m.run_program(&[
+                0xA2, 0x03, // $0000 LDX #$03
+                0xB5, 0x05, // $0002 LDA $05,X
+                0x00, //       $0004 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x42, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set8(0x0F, 0x2a);
+            m.run_program(&[
+                0xA2, 0xFF, // $0000 LDX #$FF
+                0xB5, 0x10, // $0002 LDA $10,X ; $10 + $FF = $0F
+                0x00, //       $0004 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x2a, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -714,6 +773,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x00, "wrong AC");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xAD, 0x04, 0x00, // 0x0000 LDA $0004
@@ -722,6 +782,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -741,6 +802,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0x00, "wrong XR");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xA2, 0xFF, // 0x0000 LDX #$FF
@@ -748,6 +810,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -769,6 +832,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0x00, "wrong XR");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xA6, 0x03, // 0x0000 LDX $03
@@ -777,6 +841,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -798,6 +863,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0x00, "wrong XR");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xAE, 0x04, 0x00, // 0x0000 LDX $0004
@@ -806,6 +872,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0xFF, "wrong XR");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -825,6 +892,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0x00, "wrong YR");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xA0, 0xFF, // 0x0000 LDY #$FF
@@ -832,6 +900,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -853,6 +922,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0x00, "wrong YR");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xA4, 0x03, // 0x0000 LDY $03
@@ -861,6 +931,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -882,6 +953,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0x00, "wrong YR");
             assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
 
             m.run_program(&[
                 0xAC, 0x04, 0x00, // 0x0000 LDY $0004
@@ -890,6 +962,7 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0xFF, "wrong YR");
             assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
         },
     },
     Instruction {
@@ -1094,6 +1167,26 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0x42, "wrong XR");
             assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set_reg("AC", 0x80);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0xAA, // $0000 TAX
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x80, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("AC", 0x00);
+            m.run_program(&[
+                0xAA, // $0000 TAX
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
         },
     },
     Instruction {
@@ -1112,6 +1205,26 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("YR"), 0x42, "wrong YR");
             assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set_reg("AC", 0x80);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0xA8, // $0000 TAY
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0x80, "wrong YR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("AC", 0x00);
+            m.run_program(&[
+                0xA8, // $0000 TAY
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("YR"), 0x00, "wrong YR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
         },
     },
     Instruction {
@@ -1130,6 +1243,26 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("XR"), 0x42, "wrong XR");
             assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set_reg("SP", 0x80);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0xBA, // $0000 TSX
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x80, "wrong XR");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("SP", 0x00);
+            m.run_program(&[
+                0xBA, // $0000 TSX
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("XR"), 0x00, "wrong XR");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
         },
     },
     Instruction {
@@ -1148,6 +1281,26 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x42, "wrong AC");
             assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set_reg("XR", 0x80);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0x8A, // $0000 TXA
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x80, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("XR", 0x00);
+            m.run_program(&[
+                0x8A, // $0000 TXA
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
         },
     },
     Instruction {
@@ -1182,6 +1335,26 @@ pub const INSTRUCTIONS: &[Instruction] = &[
             ]);
             assert_eq!(m.reg("AC"), 0x42, "wrong AC");
             assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+
+            m.set_reg("YR", 0x80);
+            m.set_bit("SR", ZERO);
+            m.run_program(&[
+                0x98, // $0000 TYA
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x80, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag set");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set_reg("YR", 0x00);
+            m.run_program(&[
+                0x98, // $0000 TYA
+                0x00, // $0001 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
         },
     },
 ];

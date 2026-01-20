@@ -22,6 +22,7 @@ pub enum Mode {
     Implied,
     Immediate,
     ZeroPage,
+    ZeroPageX,
     Absolute,
     Relative,
 }
