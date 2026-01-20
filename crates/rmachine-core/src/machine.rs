@@ -24,6 +24,7 @@ pub enum Mode {
     ZeroPage,
     ZeroPageX,
     Absolute,
+    AbsoluteX,
     Relative,
 }
 

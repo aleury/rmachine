@@ -786,6 +786,39 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "LDA",
+        mode: Mode::AbsoluteX,
+        opcode: 0xBD,
+        bytes: 3,
+        cycles: 4,
+        execute: |m| {
+            let base = m.fetch16();
+            let addr = base.wrapping_add(m.reg("XR").into());
+            load_reg(m, "AC", m.get8(addr));
+        },
+        test: |m| {
+            m.set8(0x0102, 0xFF);
+            m.run_program(&[
+                0xA2, 0x02, //       $0000 LDX #$02
+                0xBD, 0x00, 0x01, // $0002 LDA $0100,X
+                0x00, //             $0005 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
+            assert!(!m.test_bit("SR", ZERO), "zero flag not cleared");
+            assert!(m.test_bit("SR", NEGATIVE), "negative flag not set");
+
+            m.set8(0x0102, 0x00);
+            m.run_program(&[
+                0xA2, 0x02, //       $0000 LDX #$02
+                0xBD, 0x00, 0x01, // $0002 LDA $0100,X
+                0x00, //             $0005 BRK
+            ]);
+            assert_eq!(m.reg("AC"), 0x00, "wrong AC");
+            assert!(m.test_bit("SR", ZERO), "zero flag not set");
+            assert!(!m.test_bit("SR", NEGATIVE), "negative flag not cleared");
+        },
+    },
+    Instruction {
         mnemonic: "LDX",
         mode: Mode::Immediate,
         opcode: 0xA2,
