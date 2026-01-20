@@ -31,6 +31,7 @@ impl Mode {
         match self {
             Mode::Implied => String::new(),
             Mode::Immediate => format!("#${:02X}", operand_bytes[0]),
+            Mode::ZeroPage | Mode::Relative => format!("${:02X}", operand_bytes[0]),
             Mode::Absolute => format!(
                 "${:04X}",
                 u16::from_le_bytes([operand_bytes[0], operand_bytes[1]])
