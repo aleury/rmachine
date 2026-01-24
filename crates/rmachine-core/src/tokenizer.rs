@@ -1,4 +1,7 @@
-use std::{iter::Peekable, str::Chars};
+use std::{
+    iter::{Peekable, from_fn, once},
+    str::Chars,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -43,26 +46,21 @@ impl Tokenizer<'_> {
     }
 
     fn read_identifier(&mut self, c: char) -> Token {
-        let ident: String = std::iter::once(c)
-            .chain(std::iter::from_fn(|| {
-                self.chars.next_if(char::is_ascii_alphanumeric)
-            }))
+        let ident: String = once(c)
+            .chain(from_fn(|| self.chars.next_if(char::is_ascii_alphanumeric)))
             .collect();
         Token::Identifier(ident)
     }
 
     fn read_dec_literal(&mut self, c: char) -> Token {
-        let ident: String = std::iter::once(c)
-            .chain(std::iter::from_fn(|| {
-                self.chars.next_if(char::is_ascii_digit)
-            }))
+        let ident: String = once(c)
+            .chain(from_fn(|| self.chars.next_if(char::is_ascii_digit)))
             .collect();
         Token::DecLiteral(ident)
     }
 
     fn read_hex_literal(&mut self) -> Token {
-        let digits: String =
-            std::iter::from_fn(|| self.chars.next_if(char::is_ascii_hexdigit)).collect();
+        let digits: String = from_fn(|| self.chars.next_if(char::is_ascii_hexdigit)).collect();
 
         if digits.is_empty() {
             Token::Illegal('$')
