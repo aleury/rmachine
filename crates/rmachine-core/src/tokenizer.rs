@@ -1,5 +1,5 @@
 use std::{
-    iter::{Peekable, from_fn, once},
+    iter::{Peekable, from_fn},
     str::Chars,
 };
 
@@ -45,27 +45,25 @@ impl Tokenizer<'_> {
         }
     }
 
-    fn read_identifier(&mut self, c: char) -> Token {
-        let ident: String = once(c)
-            .chain(from_fn(|| self.chars.next_if(char::is_ascii_alphanumeric)))
-            .collect();
+    fn read_identifier(&mut self) -> Token {
+        let ident = from_fn(|| self.chars.next_if(char::is_ascii_alphanumeric)).collect();
+
         Token::Identifier(ident)
     }
 
-    fn read_dec_literal(&mut self, c: char) -> Token {
-        let ident: String = once(c)
-            .chain(from_fn(|| self.chars.next_if(char::is_ascii_digit)))
-            .collect();
+    fn read_dec_literal(&mut self) -> Token {
+        let ident: String = from_fn(|| self.chars.next_if(char::is_ascii_digit)).collect();
+
         Token::DecLiteral(ident)
     }
 
     fn read_hex_literal(&mut self) -> Token {
+        self.chars.next(); // consume $
         let digits: String = from_fn(|| self.chars.next_if(char::is_ascii_hexdigit)).collect();
-
         if digits.is_empty() {
             Token::Illegal('$')
         } else {
-            Token::HexLiteral(format!("${digits}"))
+            Token::HexLiteral(digits)
         }
     }
 }
@@ -75,17 +73,39 @@ impl Iterator for Tokenizer<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace_and_comments();
-        let token = match self.chars.next()? {
-            ':' => Token::Colon,
-            ',' => Token::Comma,
-            '.' => Token::Dot,
-            '#' => Token::Hash,
-            '(' => Token::LParen,
-            ')' => Token::RParen,
+        let token = match self.chars.peek()? {
+            ':' => {
+                self.chars.next();
+                Token::Colon
+            }
+            ',' => {
+                self.chars.next();
+                Token::Comma
+            }
+            '.' => {
+                self.chars.next();
+                Token::Dot
+            }
+            '#' => {
+                self.chars.next();
+                Token::Hash
+            }
+            '(' => {
+                self.chars.next();
+                Token::LParen
+            }
+            ')' => {
+                self.chars.next();
+                Token::RParen
+            }
             '$' => self.read_hex_literal(),
-            c if c.is_ascii_digit() => self.read_dec_literal(c),
-            c if c.is_ascii_alphabetic() => self.read_identifier(c),
-            c => Token::Illegal(c),
+            c if c.is_ascii_digit() => self.read_dec_literal(),
+            c if c.is_ascii_alphabetic() => self.read_identifier(),
+            c => {
+                let c = *c;
+                self.chars.next();
+                Token::Illegal(c)
+            }
         };
         Some(token)
     }
@@ -103,18 +123,18 @@ mod tests {
     #[test_case("; comments are skipped", &[])]
     #[test_case("foo", &[ident("foo")])]
     #[test_case("BAR", &[ident("BAR")])]
-    #[test_case("$1234", &[hex("$1234")] ; "can tokenize a hex literal")]
+    #[test_case("$1234", &[hex("1234")] ; "can tokenize a hex literal")]
     #[test_case("1234", &[dec("1234")] ; "can tokenize a decimal literal")]
-    #[test_case("#$10", &[hash(), hex("$10")])]
+    #[test_case("#$10", &[hash(), hex("10")])]
     #[test_case(".word", &[dot(), ident("word")])]
     #[test_case("label:", &[ident("label"), colon()])]
     #[test_case(
         "LDA $10",
-        &[ident("LDA"), hex("$10")]
+        &[ident("LDA"), hex("10")]
     )]
     #[test_case(
         "LDA #$10",
-        &[ident("LDA"), hash(), hex("$10")]
+        &[ident("LDA"), hash(), hex("10")]
     )]
     #[test_case(
         "LDA #42",
@@ -122,19 +142,19 @@ mod tests {
     )]
     #[test_case(
         "LDA    $10",
-        &[ident("LDA"), hex("$10")]
+        &[ident("LDA"), hex("10")]
         ; "skips extra whitespace"
     )]
     #[test_case(
         "LDA\n$10",
-        &[ident("LDA"), hex("$10")]
+        &[ident("LDA"), hex("10")]
         ; "skips newlines"
     )]
     #[test_case(
         "LDA $10,X",
         &[
             ident("LDA"),
-            hex("$10"),
+            hex("10"),
             comma(),
             ident("X"),
         ]
@@ -144,7 +164,7 @@ mod tests {
         &[
             ident("LDA"),
             lparen(),
-            hex("$10"),
+            hex("10"),
             comma(),
             ident("X"),
             rparen(),
@@ -155,7 +175,7 @@ mod tests {
         &[
             ident("LDA"),
             lparen(),
-            hex("$10"),
+            hex("10"),
             rparen(),
             comma(),
             ident("Y"),
@@ -165,23 +185,23 @@ mod tests {
         "LDA $10 ; a comment",
         &[
             ident("LDA"),
-            hex("$10"),
+            hex("10"),
         ]
     )]
     #[test_case(
         "LDA ; comment\n $10 ; another comment",
         &[
             ident("LDA"),
-            hex("$10"),
+            hex("10"),
         ]
     )]
     #[test_case(
         "LDA ; comment\n $10 ; another comment\nSTA $1000",
         &[
             ident("LDA"),
-            hex("$10"),
+            hex("10"),
             ident("STA"),
-            hex("$1000"),
+            hex("1000"),
         ]
     )]
     fn tokenize_returns_tokens(program: &str, expected: &[Token]) {
