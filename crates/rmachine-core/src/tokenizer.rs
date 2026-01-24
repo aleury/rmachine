@@ -45,6 +45,11 @@ impl Tokenizer<'_> {
         }
     }
 
+    fn read(&mut self, token: Token) -> Token {
+        self.chars.next();
+        token
+    }
+
     fn read_identifier(&mut self) -> Token {
         let ident = from_fn(|| self.chars.next_if(char::is_ascii_alphanumeric)).collect();
 
@@ -74,30 +79,12 @@ impl Iterator for Tokenizer<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace_and_comments();
         let token = match self.chars.peek()? {
-            ':' => {
-                self.chars.next();
-                Token::Colon
-            }
-            ',' => {
-                self.chars.next();
-                Token::Comma
-            }
-            '.' => {
-                self.chars.next();
-                Token::Dot
-            }
-            '#' => {
-                self.chars.next();
-                Token::Hash
-            }
-            '(' => {
-                self.chars.next();
-                Token::LParen
-            }
-            ')' => {
-                self.chars.next();
-                Token::RParen
-            }
+            ':' => self.read(Token::Colon),
+            ',' => self.read(Token::Comma),
+            '.' => self.read(Token::Dot),
+            '#' => self.read(Token::Hash),
+            '(' => self.read(Token::LParen),
+            ')' => self.read(Token::RParen),
             '$' => self.read_hex_literal(),
             c if c.is_ascii_digit() => self.read_dec_literal(),
             c if c.is_ascii_alphabetic() => self.read_identifier(),
