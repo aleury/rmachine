@@ -260,10 +260,8 @@ impl Machine {
     /// No alignment requirements apply.
     pub fn set16(&mut self, addr: u16, value: u16) {
         let [lo, hi] = value.to_le_bytes();
-        let addr = usize::from(addr);
-        if let Some(mem) = self.memory.get_mut(addr..=addr.wrapping_add(1)) {
-            (mem[0], mem[1]) = (lo, hi);
-        }
+        self.set8(addr, lo);
+        self.set8(addr.wrapping_add(1), hi);
     }
 
     /// Load bytes into memory at the given address.
@@ -543,12 +541,27 @@ mod tests {
     }
 
     #[test]
-    fn get16_returns_a_16_bit_value_from_memory() {
+    fn get16_returns_le_word_from_memory() {
         let mut machine = new_tiny_machine();
 
         machine.load(0, &[0xEF, 0xBE]).unwrap();
 
         assert_eq!(machine.get16(0), 0xBEEF);
+    }
+
+    #[test]
+    fn get16_returns_le_word_from_memory_at_wrapping_addr() {
+        let mut m = MachineBuilder {
+            memory_size: 0x10_000, // 64KiB
+            registers: &["AC", "XR", "YR"],
+            instructions: INSTRUCTIONS,
+            frequency_hz: 1_000_000,
+            ..Default::default()
+        }
+        .build();
+        m.set8(0xFFFF, 0xEF);
+        m.set8(0x0000, 0xBE);
+        assert_eq!(m.get16(0xFFFF), 0xBEEF, "wrong value");
     }
 
     #[test]
@@ -575,7 +588,23 @@ mod tests {
     fn set16_writes_le_word_to_memory() {
         let mut machine = new_tiny_machine();
         machine.set16(0, 0xBEEF);
-        assert_eq!(machine.get16(0), 0xBEEF, "wrong memory contents");
+        assert_eq!(machine.get8(0), 0xEF, "wrong low byte");
+        assert_eq!(machine.get8(1), 0xBE, "wrong high byte");
+    }
+
+    #[test]
+    fn set16_writes_le_word_to_memory_at_wrapping_addr() {
+        let mut m = MachineBuilder {
+            memory_size: 0x10_000, // 64KiB
+            registers: &["AC", "XR", "YR"],
+            instructions: INSTRUCTIONS,
+            frequency_hz: 1_000_000,
+            ..Default::default()
+        }
+        .build();
+        m.set16(0xFFFF, 0xBEEF);
+        assert_eq!(m.get8(0xFFFF), 0xEF, "wrong low byte");
+        assert_eq!(m.get8(0x0000), 0xBE, "wrong high byte");
     }
 
     #[test]
