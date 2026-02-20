@@ -3,3 +3,4 @@
 /testdata/hello*
 !/testdata/**/*.s
 .claude
+.zed

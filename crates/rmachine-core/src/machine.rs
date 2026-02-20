@@ -1,7 +1,6 @@
 #![allow(clippy::cast_possible_truncation)]
 use std::collections::HashMap;
-use std::fmt::Display;
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 use std::fs;
 use std::ops::Div;
 use std::panic;
@@ -39,24 +38,28 @@ pub struct Instruction {
     pub test: fn(&mut Machine),
 }
 
-#[derive(Debug)]
+pub type HandlerMap = HashMap<&'static str, fn(&mut Machine)>;
+
+#[derive(Debug, Default)]
 pub struct Machine {
     memory: Vec<u8>,
     pub pc: u16,
     pub registers: HashMap<&'static str, u8>,
     register_list: &'static [&'static str],
     instructions: HashMap<u8, &'static Instruction>,
+    handlers: HandlerMap,
     cycles: u64,
     cycle_time_ns: u64,
     timer_ns: u64,
     pub exception: Option<Exception>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MachineBuilder {
     pub memory_size: usize,
     pub registers: &'static [&'static str],
     pub instructions: &'static [Instruction],
+    pub handlers: HandlerMap,
     pub frequency_hz: u64,
 }
 
@@ -90,13 +93,11 @@ impl MachineBuilder {
                 }
                 instructions
             },
+            handlers: self.handlers,
             cycle_time_ns: 1_000_000_000_u64
                 .checked_div(self.frequency_hz)
                 .expect("frequency must be non-zero"),
-            pc: 0,
-            cycles: 0,
-            timer_ns: 0,
-            exception: None,
+            ..Default::default()
         }
     }
 }
@@ -254,6 +255,15 @@ impl Machine {
         }
     }
 
+    /// Writes a (little-endian) word to memory at the given address.
+    ///
+    /// No alignment requirements apply.
+    pub fn set16(&mut self, addr: u16, value: u16) {
+        let [lo, hi] = value.to_le_bytes();
+        self.set8(addr, lo);
+        self.set8(addr.wrapping_add(1), hi);
+    }
+
     /// Load bytes into memory at the given address.
     ///
     /// # Errors
@@ -390,6 +400,12 @@ impl Machine {
         Some(disassembly)
     }
 
+    pub fn signal(&mut self, signal: &'static str) {
+        if let Some(handler) = self.handlers.get(signal) {
+            (handler)(self);
+        }
+    }
+
     pub fn trap(&mut self, x: Exception) {
         self.exception = Some(x);
     }
@@ -494,6 +510,7 @@ mod tests {
             registers: &["AC", "XR", "YR"],
             instructions: INSTRUCTIONS,
             frequency_hz: 1_000_000,
+            ..Default::default()
         }
         .build()
     }
@@ -524,12 +541,27 @@ mod tests {
     }
 
     #[test]
-    fn get16_returns_a_16_bit_value_from_memory() {
+    fn get16_returns_le_word_from_memory() {
         let mut machine = new_tiny_machine();
 
         machine.load(0, &[0xEF, 0xBE]).unwrap();
 
         assert_eq!(machine.get16(0), 0xBEEF);
+    }
+
+    #[test]
+    fn get16_returns_le_word_from_memory_at_wrapping_addr() {
+        let mut m = MachineBuilder {
+            memory_size: 0x10_000, // 64KiB
+            registers: &["AC", "XR", "YR"],
+            instructions: INSTRUCTIONS,
+            frequency_hz: 1_000_000,
+            ..Default::default()
+        }
+        .build();
+        m.set8(0xFFFF, 0xEF);
+        m.set8(0x0000, 0xBE);
+        assert_eq!(m.get16(0xFFFF), 0xBEEF, "wrong value");
     }
 
     #[test]
@@ -550,6 +582,29 @@ mod tests {
 
         // Should not panic, and reading out of bounds returns 0
         assert_eq!(machine.get8(2000), 0x00);
+    }
+
+    #[test]
+    fn set16_writes_le_word_to_memory() {
+        let mut machine = new_tiny_machine();
+        machine.set16(0, 0xBEEF);
+        assert_eq!(machine.get8(0), 0xEF, "wrong low byte");
+        assert_eq!(machine.get8(1), 0xBE, "wrong high byte");
+    }
+
+    #[test]
+    fn set16_writes_le_word_to_memory_at_wrapping_addr() {
+        let mut m = MachineBuilder {
+            memory_size: 0x10_000, // 64KiB
+            registers: &["AC", "XR", "YR"],
+            instructions: INSTRUCTIONS,
+            frequency_hz: 1_000_000,
+            ..Default::default()
+        }
+        .build();
+        m.set16(0xFFFF, 0xBEEF);
+        assert_eq!(m.get8(0xFFFF), 0xEF, "wrong low byte");
+        assert_eq!(m.get8(0x0000), 0xBE, "wrong high byte");
     }
 
     #[test]
