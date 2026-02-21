@@ -1,18 +1,20 @@
 use std::io::{Write, stdin, stdout};
 
-use crate::Machine;
+use crate::{Machine, Memory};
 use anyhow::Result;
 
 pub struct Monitor<'a> {
     pub debug: bool,
     machine: &'a mut Machine,
+    memory: &'a mut Memory,
 }
 
 impl<'a> Monitor<'a> {
-    pub fn new(machine: &'a mut Machine) -> Self {
+    pub fn new(machine: &'a mut Machine, memory: &'a mut Memory) -> Self {
         Self {
             debug: false,
             machine,
+            memory,
         }
     }
 
@@ -30,7 +32,7 @@ impl<'a> Monitor<'a> {
 
         loop {
             if !self.debug {
-                self.machine.run();
+                self.machine.run(self.memory);
             }
 
             println!("{}", self.machine);
@@ -54,7 +56,7 @@ impl<'a> Monitor<'a> {
                     }
                 }
                 Some("q") => break,
-                Some("n") | None => self.machine.step(),
+                Some("n") | None => self.machine.step(self.memory),
                 Some("m") => {
                     let page_start = self.machine.pc & 0xFF00;
                     for row in 0..16_u16 {
@@ -65,12 +67,12 @@ impl<'a> Monitor<'a> {
                         print!("{row_start:04X}:");
                         for col in 0..16 {
                             let addr = row_start.checked_add(col).expect("address out of range");
-                            print!(" {:02X}", self.machine.get8(addr));
+                            print!(" {:02X}", self.memory.get8(addr));
                         }
                         print!("  |");
                         for col in 0..16 {
                             let addr = row_start.checked_add(col).expect("address out of range");
-                            let byte = self.machine.get8(addr);
+                            let byte = self.memory.get8(addr);
                             print!(
                                 "{}",
                                 if byte.is_ascii_graphic() || byte == b' ' {
@@ -83,7 +85,7 @@ impl<'a> Monitor<'a> {
                         println!("|");
                     }
                 }
-                Some("r") => self.machine.run(),
+                Some("r") => self.machine.run(self.memory),
                 Some("?" | "h" | "help") => println!("{HELP}\n"),
                 Some(cmd) => println!("Unknown command '{cmd}' (type '?' for help)"),
             }

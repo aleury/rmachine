@@ -9,11 +9,10 @@ use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
 
-use anyhow::Context;
-use anyhow::bail;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use num_traits::ToPrimitive;
 
+use crate::Memory;
 use crate::exception::Exception;
 
 #[derive(Debug, Clone)]
@@ -34,15 +33,14 @@ pub struct Instruction {
     pub opcode: u8,
     pub bytes: u8,
     pub cycles: u8,
-    pub execute: fn(&mut Machine),
-    pub test: fn(&mut Machine),
+    pub execute: fn(&mut Machine, &mut Memory),
+    pub test: fn(&mut Machine, &mut Memory),
 }
 
-pub type HandlerMap = HashMap<&'static str, fn(&mut Machine)>;
+pub type HandlerMap = HashMap<&'static str, fn(&mut Machine, &mut Memory)>;
 
 #[derive(Debug, Default)]
 pub struct Machine {
-    memory: Vec<u8>,
     pub pc: u16,
     pub registers: HashMap<&'static str, u8>,
     register_list: &'static [&'static str],
@@ -56,7 +54,6 @@ pub struct Machine {
 
 #[derive(Debug, Default)]
 pub struct MachineBuilder {
-    pub memory_size: usize,
     pub registers: &'static [&'static str],
     pub instructions: &'static [Instruction],
     pub handlers: HandlerMap,
@@ -72,7 +69,6 @@ impl MachineBuilder {
     #[must_use]
     pub fn build(self) -> Machine {
         Machine {
-            memory: vec![0; self.memory_size],
             registers: {
                 let mut registers: HashMap<&'static str, u8> = HashMap::new();
                 for register in self.registers {
@@ -114,22 +110,22 @@ impl Machine {
     }
 
     /// Runs the machine continuously until an exception occurs.
-    pub fn run(&mut self) {
+    pub fn run(&mut self, memory: &mut Memory) {
         self.exception = None;
         while self.exception.is_none() {
-            self.step();
+            self.step(memory);
         }
     }
 
     /// Runs a single instruction on the machine.
     ///
     /// Unknown opcodes are ignored.
-    pub fn step(&mut self) {
+    pub fn step(&mut self, memory: &mut Memory) {
         self.exception = None;
         let pc_start = self.pc;
-        let opcode = self.fetch8();
+        let opcode = self.fetch8(memory);
         if let Some(instruction) = self.instructions.get(&opcode).copied() {
-            (instruction.execute)(self);
+            (instruction.execute)(self, memory);
             self.wait_cycles(instruction.cycles);
         }
         if self.pc == pc_start {
@@ -142,10 +138,10 @@ impl Machine {
     /// # Panics
     ///
     /// If the program will not fit in the machine's memory.
-    pub fn run_program(&mut self, program: &[u8]) {
-        self.load(0, program).expect("program too big");
+    pub fn run_program(&mut self, memory: &mut Memory, program: &[u8]) {
+        memory.load(0, program).expect("program too big");
         self.pc = 0;
-        self.run();
+        self.run(memory);
     }
 
     /// Returns the program counter.
@@ -216,8 +212,8 @@ impl Machine {
     }
 
     /// Returns the next byte from memory, advancing PC.
-    pub fn fetch8(&mut self) -> u8 {
-        let value = self.get8(self.pc);
+    pub fn fetch8(&mut self, memory: &mut Memory) -> u8 {
+        let value = memory.get8(self.pc);
         self.advance(1);
         value
     }
@@ -227,65 +223,10 @@ impl Machine {
     /// # Errors
     ///
     /// Returns an error if the address is out of bounds.
-    pub fn fetch16(&mut self) -> u16 {
-        let value = self.get16(self.pc);
+    pub fn fetch16(&mut self, memory: &mut Memory) -> u16 {
+        let value = memory.get16(self.pc);
         self.advance(2);
         value
-    }
-
-    /// Returns the byte at the given address.
-    #[must_use]
-    pub fn get8(&self, addr: u16) -> u8 {
-        self.memory.get(usize::from(addr)).copied().unwrap_or(0)
-    }
-
-    /// Returns the (little-endian) word at the given address.
-    ///
-    /// No alignment requirements apply.
-    #[must_use]
-    pub fn get16(&self, addr: u16) -> u16 {
-        let le_bytes = [self.get8(addr), self.get8(addr.wrapping_add(1))];
-        u16::from_le_bytes(le_bytes)
-    }
-
-    /// Writes a byte to memory at the given address.
-    pub fn set8(&mut self, addr: u16, value: u8) {
-        if let Some(byte) = self.memory.get_mut(usize::from(addr)) {
-            *byte = value;
-        }
-    }
-
-    /// Writes a (little-endian) word to memory at the given address.
-    ///
-    /// No alignment requirements apply.
-    pub fn set16(&mut self, addr: u16, value: u16) {
-        let [lo, hi] = value.to_le_bytes();
-        self.set8(addr, lo);
-        self.set8(addr.wrapping_add(1), hi);
-    }
-
-    /// Load bytes into memory at the given address.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the address is out of bounds.
-    pub fn load(&mut self, addr: u16, program: &[u8]) -> Result<()> {
-        let start = usize::from(addr);
-        let end = start
-            .checked_add(program.len())
-            .context("program too big")?
-            .checked_sub(1)
-            .context("program empty")?;
-        let max = self.memory.len().checked_sub(1).context("zero memory")?;
-        if end > max {
-            bail!("end address beyond memory ({end:#X} against {max:#X})")
-        }
-        let slice = self
-            .memory
-            .get_mut(start..=end)
-            .ok_or_else(|| anyhow!("invalid memory range: {start:#X}-{end:#X} (max {max:#X}"))?;
-        slice.copy_from_slice(program);
-        Ok(())
     }
 
     /// Loads binary file `path` at address `addr` and sets PC to `addr`.
@@ -293,9 +234,14 @@ impl Machine {
     /// # Errors
     ///
     /// If reading the file fails.
-    pub fn load_bin(&mut self, addr: u16, path: impl AsRef<Path>) -> Result<()> {
+    pub fn load_bin(
+        &mut self,
+        memory: &mut Memory,
+        addr: u16,
+        path: impl AsRef<Path>,
+    ) -> Result<()> {
         let data = fs::read(path)?;
-        self.load(addr, &data)?;
+        memory.load(addr, &data)?;
         self.pc = addr;
         Ok(())
     }
@@ -336,10 +282,11 @@ impl Machine {
     /// If a test fails.
     pub fn self_test(&mut self) {
         let opcodes: Vec<_> = self.instructions.keys().copied().collect();
+        let mut memory = Memory::new(0x10_000);
         for opcode in opcodes {
             self.reset();
             let instr = &self.instructions[&opcode].clone();
-            if panic::catch_unwind(AssertUnwindSafe(|| (instr.test)(self))).is_err() {
+            if panic::catch_unwind(AssertUnwindSafe(|| (instr.test)(self, &mut memory))).is_err() {
                 eprintln!("{self}");
                 panic!("opcode {:#04X} failed self-test", instr.opcode);
             }
@@ -381,18 +328,18 @@ impl Machine {
     ///
     /// May return an error if unable to disassemble next instruction.
     #[must_use]
-    pub fn disassemble_next(&self) -> Option<String> {
-        let opcode = self.get8(self.pc);
+    pub fn disassemble_next(&self, memory: &mut Memory) -> Option<String> {
+        let opcode = memory.get8(self.pc);
         let instruction = self.instructions.get(&opcode)?;
         let mut disassembly = String::from(instruction.mnemonic);
         match instruction.bytes {
             1 => {}
             2 => {
-                let value = self.get8(self.pc.wrapping_add(1));
+                let value = memory.get8(self.pc.wrapping_add(1));
                 write!(disassembly, " {value:#04x}").ok()?;
             }
             3 => {
-                let value = self.get16(self.pc.wrapping_add(1));
+                let value = memory.get16(self.pc.wrapping_add(1));
                 write!(disassembly, " {value:#06x}").ok()?;
             }
             x => unreachable!("invalid number of bytes: {x}"),
@@ -400,9 +347,9 @@ impl Machine {
         Some(disassembly)
     }
 
-    pub fn signal(&mut self, signal: &'static str) {
+    pub fn signal(&mut self, memory: &mut Memory, signal: &'static str) {
         if let Some(handler) = self.handlers.get(signal) {
-            (handler)(self);
+            (handler)(self, memory);
         }
     }
 
@@ -428,8 +375,6 @@ impl Display for Machine {
                     .expect("reg should have a hashmap entry")
             )?;
         }
-        let instruction = self.disassemble_next().unwrap_or("???".into());
-        writeln!(f, "{instruction:10} {:.2}MHz", self.speed_mhz())?;
         Ok(())
     }
 }
@@ -445,11 +390,14 @@ mod tests {
             opcode: 0x00,
             bytes: 1,
             cycles: 2,
-            execute: |m| m.trap(Exception::Break),
-            test: |m| {
-                m.run_program(&[
-                    0x00, // 0x0000 BRK
-                ]);
+            execute: |m, _| m.trap(Exception::Break),
+            test: |m, mem| {
+                m.run_program(
+                    mem,
+                    &[
+                        0x00, // 0x0000 BRK
+                    ],
+                );
                 assert_eq!(m.pc, 0x0001, "wrong PC");
             },
         },
@@ -459,13 +407,16 @@ mod tests {
             opcode: 0x04,
             bytes: 3,
             cycles: 2,
-            execute: |m| m.pc = m.fetch16(),
-            test: |m| {
-                m.run_program(&[
-                    0x04, 0x04, 0x00, // 0x0000 JMP $0004
-                    0x00, //             0x0003 BRK
-                    0x00, //             0x0004 BRK
-                ]);
+            execute: |m, mem| m.pc = m.fetch16(mem),
+            test: |m, mem| {
+                m.run_program(
+                    mem,
+                    &[
+                        0x04, 0x04, 0x00, // 0x0000 JMP $0004
+                        0x00, //             0x0003 BRK
+                        0x00, //             0x0004 BRK
+                    ],
+                );
                 assert_eq!(m.pc, 0x0005, "wrong PC");
             },
         },
@@ -475,15 +426,18 @@ mod tests {
             opcode: 0x02,
             bytes: 2,
             cycles: 2,
-            execute: |m| {
-                let op = m.fetch8();
+            execute: |m, mem| {
+                let op = m.fetch8(mem);
                 m.set_reg("AC", op);
             },
-            test: |m| {
-                m.run_program(&[
-                    0x02, 0xFF, // 0x0000 LDA #FF
-                    0x00, //       0x0002 BRK
-                ]);
+            test: |m, mem| {
+                m.run_program(
+                    mem,
+                    &[
+                        0x02, 0xFF, // 0x0000 LDA #FF
+                        0x00, //       0x0002 BRK
+                    ],
+                );
                 assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
             },
         },
@@ -493,12 +447,15 @@ mod tests {
             opcode: 0x01,
             bytes: 1,
             cycles: 2,
-            execute: |_| (),
-            test: |m| {
-                m.run_program(&[
-                    0x01, // 0x0000 NOP
-                    0x00, // 0x0001 BRK
-                ]);
+            execute: |_, _| (),
+            test: |m, mem| {
+                m.run_program(
+                    mem,
+                    &[
+                        0x01, // 0x0000 NOP
+                        0x00, // 0x0001 BRK
+                    ],
+                );
                 assert_eq!(m.pc, 0x0002, "wrong PC");
             },
         },
@@ -506,7 +463,6 @@ mod tests {
 
     fn new_tiny_machine() -> Machine {
         MachineBuilder {
-            memory_size: 1024,
             registers: &["AC", "XR", "YR"],
             instructions: INSTRUCTIONS,
             frequency_hz: 1_000_000,
@@ -523,88 +479,16 @@ mod tests {
     #[test]
     fn cycles_are_counted() {
         let mut m = new_tiny_machine();
-        m.run_program(&[
-            0x01, // 0x0000 NOP (2 cycles)
-            0x01, // 0x0001 NOP (2 cycles)
-            0x00, // 0x0002 BRK (2 cycles)
-        ]);
+        let mut mem = Memory::new(1024);
+        m.run_program(
+            &mut mem,
+            &[
+                0x01, // 0x0000 NOP (2 cycles)
+                0x01, // 0x0001 NOP (2 cycles)
+                0x00, // 0x0002 BRK (2 cycles)
+            ],
+        );
         assert_eq!(m.cycles, 6);
-    }
-
-    #[test]
-    fn get8_returns_a_byte_from_memory() {
-        let mut machine = new_tiny_machine();
-
-        machine.load(0, &[0xFF]).unwrap();
-
-        assert_eq!(machine.get8(0), 0xFF);
-    }
-
-    #[test]
-    fn get16_returns_le_word_from_memory() {
-        let mut machine = new_tiny_machine();
-
-        machine.load(0, &[0xEF, 0xBE]).unwrap();
-
-        assert_eq!(machine.get16(0), 0xBEEF);
-    }
-
-    #[test]
-    fn get16_returns_le_word_from_memory_at_wrapping_addr() {
-        let mut m = MachineBuilder {
-            memory_size: 0x10_000, // 64KiB
-            registers: &["AC", "XR", "YR"],
-            instructions: INSTRUCTIONS,
-            frequency_hz: 1_000_000,
-            ..Default::default()
-        }
-        .build();
-        m.set8(0xFFFF, 0xEF);
-        m.set8(0x0000, 0xBE);
-        assert_eq!(m.get16(0xFFFF), 0xBEEF, "wrong value");
-    }
-
-    #[test]
-    fn set8_writes_a_byte_to_memory() {
-        let mut machine = new_tiny_machine();
-
-        machine.set8(0, 0x42);
-
-        assert_eq!(machine.get8(0), 0x42);
-    }
-
-    #[test]
-    fn set8_ignores_out_of_bounds_writes() {
-        let mut machine = new_tiny_machine();
-
-        // Memory size is 1024 bytes (0-1023), so address 2000 is out of bounds
-        machine.set8(2000, 0xFF);
-
-        // Should not panic, and reading out of bounds returns 0
-        assert_eq!(machine.get8(2000), 0x00);
-    }
-
-    #[test]
-    fn set16_writes_le_word_to_memory() {
-        let mut machine = new_tiny_machine();
-        machine.set16(0, 0xBEEF);
-        assert_eq!(machine.get8(0), 0xEF, "wrong low byte");
-        assert_eq!(machine.get8(1), 0xBE, "wrong high byte");
-    }
-
-    #[test]
-    fn set16_writes_le_word_to_memory_at_wrapping_addr() {
-        let mut m = MachineBuilder {
-            memory_size: 0x10_000, // 64KiB
-            registers: &["AC", "XR", "YR"],
-            instructions: INSTRUCTIONS,
-            frequency_hz: 1_000_000,
-            ..Default::default()
-        }
-        .build();
-        m.set16(0xFFFF, 0xBEEF);
-        assert_eq!(m.get8(0xFFFF), 0xEF, "wrong low byte");
-        assert_eq!(m.get8(0x0000), 0xBE, "wrong high byte");
     }
 
     #[test]
@@ -633,18 +517,23 @@ mod tests {
     #[test]
     fn machine_traps_pc_loop_with_exception() {
         let mut m = new_tiny_machine();
-        m.run_program(&[
-            0x04, 0x00, 0x00, // 0x0000 JMP $0000
-            0x00, //             0x0003 BRK
-        ]);
+        let mut mem = Memory::new(1024);
+        m.run_program(
+            &mut mem,
+            &[
+                0x04, 0x00, 0x00, // 0x0000 JMP $0000
+                0x00, //             0x0003 BRK
+            ],
+        );
         assert_eq!(m.pc, 0x0000, "wrong PC");
     }
 
     #[test]
     fn load_bin_fn_loads_bin_file() {
         let mut m = new_tiny_machine();
-        m.load_bin(0, "tests/lda-ff.bin").unwrap();
-        m.run();
+        let mut memory = Memory::new(1024);
+        m.load_bin(&mut memory, 0, "tests/lda-ff.bin").unwrap();
+        m.run(&mut memory);
         assert_eq!(m.reg("AC"), 0xFF, "wrong AC");
     }
 }

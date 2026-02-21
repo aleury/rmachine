@@ -3,7 +3,8 @@ use clap::Parser;
 use clap_num::maybe_hex;
 
 use rmachine_core::monitor::Monitor;
-use rmachine_mos6502::MOS6502;
+use rmachine_core::prelude::Memory;
+use rmachine_mos6502::{MEMORY_SIZE, MOS6502};
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
@@ -21,11 +22,12 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     let mut m = MOS6502::new();
+    let mut mem = Memory::new(MEMORY_SIZE);
 
     if let Some(path) = args.path {
-        m.load_bin(args.addr, path)?;
+        m.load_bin(&mut mem, args.addr, path)?;
     }
-    let mut mon = Monitor::new(&mut m);
+    let mut mon = Monitor::new(&mut m, &mut mem);
     mon.debug = args.debug;
     mon.run()
 }

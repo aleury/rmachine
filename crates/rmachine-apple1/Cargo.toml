@@ -1,0 +1,18 @@
+[package]
+name = "rmachine-apple1"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+rmachine-mos6502 = { path = "../rmachine-mos6502" }
+rmachine-core = { path = "../rmachine-core" }
+
+[lints]
+workspace = true
