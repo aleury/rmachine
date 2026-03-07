@@ -218,6 +218,108 @@ pub const INSTRUCTIONS: &[Instruction] = &[
         },
     },
     Instruction {
+        mnemonic: "BIT",
+        mode: Mode::Absolute,
+        opcode: 0x2C,
+        bytes: 3,
+        cycles: 4,
+        execute: |m, mem| {
+            let addr = m.fetch16(mem);
+            let value = mem.get8(addr);
+
+            if value & 0b1000_0000 != 0 {
+                m.set_bit("SR", NEGATIVE);
+            } else {
+                m.clear_bit("SR", NEGATIVE);
+            }
+
+            if value & 0b0100_0000 != 0 {
+                m.set_bit("SR", OVERFLOW);
+            } else {
+                m.clear_bit("SR", OVERFLOW);
+            }
+
+            update_zero_flag(m, m.reg("AC") & value);
+        },
+        test: |m, mem| {
+            // Clear SR, AC
+            m.set_reg("SR", 0x00);
+            m.set_reg("AC", 0x00);
+
+            mem.set8(0x1000, 0b1100_0000);
+            m.run_program(
+                mem,
+                &[
+                    0x2C, 0x00, 0x10, // 0x0000 BIT $1000
+                    0x00,
+                ],
+            );
+            assert!(m.test_bit("SR", NEGATIVE));
+            assert!(m.test_bit("SR", OVERFLOW));
+            assert!(m.test_bit("SR", ZERO));
+        },
+    },
+    Instruction {
+        mnemonic: "BMI",
+        mode: Mode::Relative,
+        opcode: 0x30,
+        bytes: 2,
+        cycles: 2,
+        execute: |m, mem| {
+            let offset = m.fetch8(mem);
+            if m.test_bit("SR", NEGATIVE) {
+                let signed_offset = i16::from(offset.cast_signed());
+                m.pc = m.pc.wrapping_add_signed(signed_offset);
+            }
+        },
+        test: |m, mem| {
+            // Test branch forward (taken)
+            m.set_bit("SR", NEGATIVE);
+            m.set_bit("SR", CARRY);
+            m.run_program(
+                mem,
+                &[
+                    0x30, 0x01, // $0000 BMI $01
+                    0x00, //       $0002 BRK (skipped)
+                    0x18, //       $0003 CLC
+                    0x00, //       $0004 BRK
+                ],
+            );
+            assert_eq!(m.pc(), 0x0005, "wrong PC");
+            assert!(!m.test_bit("SR", CARRY), "carry not cleared");
+
+            // Test branch backward (taken)
+            m.set_bit("SR", NEGATIVE);
+            m.set_bit("SR", CARRY);
+            m.run_program(
+                mem,
+                &[
+                    0x4C, 0x05, 0x00, // $0000 JMP $0005
+                    0x18, //             $0003 CLC
+                    0x00, //             $0004 BRK
+                    0x30, 0xFC, //       $0005 BMI $FC (branch to $0003)
+                    0x00, //             $0007 BRK (skipped)
+                ],
+            );
+            assert_eq!(m.pc(), 0x0005, "wrong PC");
+            assert!(!m.test_bit("SR", CARRY), "carry not cleared");
+
+            // Test branch not taken
+            m.clear_bit("SR", NEGATIVE);
+            m.set_bit("SR", CARRY);
+            m.run_program(
+                mem,
+                &[
+                    0x30, 0x01, // $0000 BMI $01 (not taken)
+                    0x18, //       $0002 CLC
+                    0x00, //       $0003 BRK
+                ],
+            );
+            assert_eq!(m.pc(), 0x0004, "wrong PC");
+            assert!(!m.test_bit("SR", CARRY), "carry not cleared");
+        },
+    },
+    Instruction {
         mnemonic: "BRK",
         mode: Mode::Implied,
         opcode: 0x00,
